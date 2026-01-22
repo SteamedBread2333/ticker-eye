@@ -119,7 +119,10 @@ function createUI() {
     // 创建标题栏（可拖拽区域）
     const header = document.createElement('div');
     header.className = 'ticker-header';
-    header.innerHTML = '<span class="ticker-title">📈 股票行情</span>';
+    // 创建拖拽图标
+    const dragIcon = document.createElement('div');
+    dragIcon.className = 'ticker-drag-icon';
+    header.appendChild(dragIcon);
     
     // 创建内容区域
     const content = document.createElement('div');
@@ -306,14 +309,14 @@ async function updateTickers() {
         return `
           <div class="ticker-item ticker-error" data-symbol="${symbol}" data-index="${index}">
             <div class="ticker-order-controls">
-              <button class="ticker-order-btn ticker-order-up" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="上移">↑</button>
-              <button class="ticker-order-btn ticker-order-down" data-index="${index}" ${index === tickers.length - 1 ? 'disabled' : ''} title="下移">↓</button>
+              <button class="ticker-order-btn ticker-order-up" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
+              <button class="ticker-order-btn ticker-order-down" data-index="${index}" ${index === tickers.length - 1 ? 'disabled' : ''} title="下移">▼</button>
             </div>
             <div style="flex: 1; min-width: 0;">
               <div class="ticker-symbol ticker-symbol-clickable" data-symbol="${symbol}" title="点击复制代码: ${symbol}">${symbol}</div>
               <div class="ticker-error-text">获取失败</div>
             </div>
-            <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制股票代码">📋</button>
+            <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制股票代码">复制</button>
           </div>
         `;
       }
@@ -358,8 +361,8 @@ async function updateTickers() {
       return `
         <div class="ticker-item" data-symbol="${symbol}" data-index="${index}">
           <div class="ticker-order-controls">
-            <button class="ticker-order-btn ticker-order-up" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="上移">↑</button>
-            <button class="ticker-order-btn ticker-order-down" data-index="${index}" ${index === tickers.length - 1 ? 'disabled' : ''} title="下移">↓</button>
+            <button class="ticker-order-btn ticker-order-up" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
+            <button class="ticker-order-btn ticker-order-down" data-index="${index}" ${index === tickers.length - 1 ? 'disabled' : ''} title="下移">▼</button>
           </div>
           <div style="flex: 1; min-width: 0;">
             <div class="ticker-symbol ticker-symbol-clickable" data-symbol="${symbol}" title="点击复制代码: ${symbol}">${displayName}</div>
@@ -373,7 +376,7 @@ async function updateTickers() {
             </div>
             ${ratioHtml}
           </div>
-          <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制该股票所有信息">📋</button>
+          <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制该股票所有信息">复制</button>
         </div>
       `;
     })
@@ -480,7 +483,7 @@ function setupCopyButtons(contentDiv, results, tickers) {
         
         // 临时改变按钮样式
         const originalHTML = btn.innerHTML;
-        btn.innerHTML = '✓';
+          btn.innerHTML = '已复制';
         btn.style.background = '#4CAF50';
         btn.style.color = 'white';
         setTimeout(() => {
@@ -560,11 +563,11 @@ async function copyToClipboard(text, element) {
     
     // 临时改变按钮样式
     if (element.classList.contains('ticker-copy-btn')) {
-      element.textContent = '✓';
+      element.textContent = '已复制';
       element.style.background = '#4CAF50';
       element.style.color = 'white';
       setTimeout(() => {
-        element.textContent = '📋';
+        element.textContent = '复制';
         element.style.background = '';
         element.style.color = '';
       }, 1000);

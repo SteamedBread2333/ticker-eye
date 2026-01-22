@@ -180,7 +180,7 @@ async function addTicker() {
   const symbol = input.value.trim().toUpperCase();
   
   if (!symbol) {
-    alert('请输入股票代码');
+    alert('请输入代码');
     return;
   }
   

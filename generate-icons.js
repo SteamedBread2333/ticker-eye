@@ -61,9 +61,9 @@ async function generateIcon(size) {
       .png()
       .toFile(outputPath);
     
-    console.log(`✓ 已生成: icon${size}.png`);
+    console.log(`已生成: icon${size}.png`);
   } catch (error) {
-    console.error(`✗ 生成 icon${size}.png 失败:`, error.message);
+    console.error(`生成 icon${size}.png 失败:`, error.message);
   }
 }
 
@@ -74,7 +74,7 @@ async function main() {
     await generateIcon(size);
   }
   
-  console.log('\n✓ 所有图标生成完成！');
+  console.log('\n所有图标生成完成！');
   console.log('现在可以加载Chrome扩展了。');
 }
 

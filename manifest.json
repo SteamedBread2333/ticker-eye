@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Ticker Eye - 股票行情助手",
+  "name": "Ticker Eye - 股票行情",
   "version": "1.0.0",
   "description": "实时股票行情，可拖拽浮窗，每3秒自动刷新",
   "permissions": [
