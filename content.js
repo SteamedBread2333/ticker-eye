@@ -484,12 +484,14 @@ function setupCopyButtons(contentDiv, results, tickers) {
         // 临时改变按钮样式
         const originalHTML = btn.innerHTML;
           btn.innerHTML = '已复制';
-        btn.style.background = '#4CAF50';
+        btn.style.background = 'linear-gradient(135deg, #D4AF37 0%, #B8860B 50%, #8B6914 100%)';
         btn.style.color = 'white';
+        btn.style.boxShadow = '0 2px 8px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
         setTimeout(() => {
           btn.innerHTML = originalHTML;
           btn.style.background = '';
           btn.style.color = '';
+          btn.style.boxShadow = '';
         }, 1000);
       } catch (err) {
         // 降级方案：使用传统方法
@@ -564,12 +566,14 @@ async function copyToClipboard(text, element) {
     // 临时改变按钮样式
     if (element.classList.contains('ticker-copy-btn')) {
       element.textContent = '已复制';
-      element.style.background = '#4CAF50';
+      element.style.background = 'linear-gradient(135deg, #D4AF37 0%, #B8860B 50%, #8B6914 100%)';
+      element.style.boxShadow = '0 2px 8px rgba(212, 175, 55, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
       element.style.color = 'white';
       setTimeout(() => {
         element.textContent = '复制';
         element.style.background = '';
         element.style.color = '';
+        element.style.boxShadow = '';
       }, 1000);
     }
   } catch (err) {

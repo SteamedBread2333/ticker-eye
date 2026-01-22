@@ -150,12 +150,7 @@ async function fetchPrice(symbol) {
     const response = await new Promise((resolve) => {
       chrome.runtime.sendMessage({ action: 'fetchPrice', symbol: symbol }, (response) => {
         if (chrome.runtime.lastError) {
-          const error = chrome.runtime.lastError.message || '';
-          if (error.includes('Extension context invalidated') || 
-              error.includes('message port closed') ||
-              error.includes('Could not establish connection')) {
-            console.warn('Extension context issue:', chrome.runtime.lastError);
-          }
+          // 静默处理所有错误
           resolve(null);
         } else {
           resolve(response);
@@ -167,7 +162,7 @@ async function fetchPrice(symbol) {
       return response.data;
     }
   } catch (error) {
-    console.error('Error fetching price:', error);
+    // 静默处理所有错误
   }
   
   return null;
@@ -202,13 +197,9 @@ async function addTicker() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]) {
       chrome.tabs.sendMessage(tabs[0].id, { action: 'updateTickers' }, (response) => {
+        // 静默处理所有错误（content script可能不存在或页面不支持）
         if (chrome.runtime.lastError) {
-          // 忽略错误（content script可能不存在或页面不支持）
-          const error = chrome.runtime.lastError.message || '';
-          if (!error.includes('Could not establish connection') && 
-              !error.includes('Receiving end does not exist')) {
-            console.warn('Error sending message to content script:', chrome.runtime.lastError);
-          }
+          // 忽略所有错误，不输出警告
         }
       });
     }
@@ -228,13 +219,9 @@ async function deleteTicker(symbol) {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0]) {
       chrome.tabs.sendMessage(tabs[0].id, { action: 'updateTickers' }, (response) => {
+        // 静默处理所有错误（content script可能不存在或页面不支持）
         if (chrome.runtime.lastError) {
-          // 忽略错误（content script可能不存在或页面不支持）
-          const error = chrome.runtime.lastError.message || '';
-          if (!error.includes('Could not establish connection') && 
-              !error.includes('Receiving end does not exist')) {
-            console.warn('Error sending message to content script:', chrome.runtime.lastError);
-          }
+          // 忽略所有错误，不输出警告
         }
       });
     }
@@ -272,13 +259,9 @@ async function toggleEnabled() {
     
     // 通知content script
     chrome.tabs.sendMessage(tabId, { action: 'toggleEnabled', enabled }, (response) => {
+      // 静默处理所有错误（content script可能不存在或页面不支持）
       if (chrome.runtime.lastError) {
-        // 忽略错误（content script可能不存在或页面不支持）
-        const error = chrome.runtime.lastError.message || '';
-        if (!error.includes('Could not establish connection') && 
-            !error.includes('Receiving end does not exist')) {
-          console.warn('Error sending message to content script:', chrome.runtime.lastError);
-        }
+        // 忽略所有错误，不输出警告
       }
     });
   });

@@ -2,7 +2,7 @@
 // 可以在这里处理后台任务，如定期更新数据等
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Ticker Eye extension installed');
+  // 扩展已安装
 });
 
 // 监听存储变化
