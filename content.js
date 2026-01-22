@@ -313,6 +313,7 @@ async function updateTickers() {
               <div class="ticker-symbol ticker-symbol-clickable" data-symbol="${symbol}" title="点击复制代码: ${symbol}">${symbol}</div>
               <div class="ticker-error-text">获取失败</div>
             </div>
+            <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制股票代码">📋</button>
           </div>
         `;
       }
@@ -321,11 +322,38 @@ async function updateTickers() {
       const price = data.regularMarketPrice || 0;
       const change = data.regularMarketChange || 0;
       const changePercent = data.regularMarketChangePercent || 0;
+      const weibi = data.weibi; // 委比（可能为null）
+      const liangbi = data.liangbi; // 量比（可能为null）
       const isPositive = change >= 0;
       
       // 显示股票名称，如果名称太长则只显示代码
       const stockName = data.stockName || '';
       const displayName = stockName ? `${stockName} (${symbol})` : symbol;
+      
+      // 委比和量比显示逻辑
+      let weibiHtml = '';
+      if (weibi !== null && !isNaN(weibi)) {
+        const weibiPositive = weibi >= 0;
+        weibiHtml = `<span class="ticker-weibi ${weibiPositive ? 'positive' : 'negative'}" title="委比 (Bid Ratio)">
+          BR: ${weibiPositive ? '+' : ''}${weibi.toFixed(2)}%
+        </span>`;
+      }
+      
+      let liangbiHtml = '';
+      if (liangbi !== null && !isNaN(liangbi)) {
+        liangbiHtml = `<span class="ticker-liangbi" title="量比 (Volume Ratio)">
+          VR: ${liangbi.toFixed(2)}
+        </span>`;
+      }
+      
+      // 合并委比和量比显示
+      let ratioHtml = '';
+      if (weibiHtml || liangbiHtml) {
+        ratioHtml = `<div style="margin-top: 2px; display: flex; align-items: center; gap: 8px;">
+          ${weibiHtml}
+          ${liangbiHtml}
+        </div>`;
+      }
       
       return `
         <div class="ticker-item" data-symbol="${symbol}" data-index="${index}">
@@ -343,7 +371,9 @@ async function updateTickers() {
                 ${isPositive ? '+' : ''}${changePercent.toFixed(2)}%
               </span>
             </div>
+            ${ratioHtml}
           </div>
+          <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制该股票所有信息">📋</button>
         </div>
       `;
     })
@@ -362,6 +392,9 @@ async function updateTickers() {
     
     // 添加上下箭头排序功能
     setupOrderButtons(contentDiv, tickers);
+    
+    // 添加复制按钮功能
+    setupCopyButtons(contentDiv, results, tickers);
   } catch (error) {
     // 捕获并处理扩展上下文失效的错误
     const errorMsg = error.message || '';
@@ -402,6 +435,78 @@ function setupOrderButtons(container, tickers) {
 }
 
 
+
+// 设置复制按钮功能
+function setupCopyButtons(contentDiv, results, tickers) {
+  contentDiv.querySelectorAll('.ticker-copy-item-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const index = parseInt(btn.getAttribute('data-index'));
+      const symbol = btn.getAttribute('data-symbol');
+      
+      let copyText = '';
+      
+      // 检查是否有数据（获取失败的情况）
+      if (index >= 0 && index < results.length && results[index]) {
+        const data = results[index];
+        const price = data.regularMarketPrice || 0;
+        const change = data.regularMarketChange || 0;
+        const changePercent = data.regularMarketChangePercent || 0;
+        const weibi = data.weibi;
+        const liangbi = data.liangbi;
+        const stockName = data.stockName || '';
+        
+        // 构建要复制的文本
+        copyText = `${stockName ? stockName + ' ' : ''}${symbol}\n`;
+        copyText += `价格: ${price.toFixed(2)}\n`;
+        copyText += `涨跌: ${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%\n`;
+        
+        if (weibi !== null && !isNaN(weibi)) {
+          copyText += `委比: ${weibi >= 0 ? '+' : ''}${weibi.toFixed(2)}%\n`;
+        }
+        
+        if (liangbi !== null && !isNaN(liangbi)) {
+          copyText += `量比: ${liangbi.toFixed(2)}\n`;
+        }
+      } else {
+        // 获取失败的情况，只复制股票代码
+        copyText = symbol;
+      }
+      
+      // 复制到剪贴板
+      try {
+        await navigator.clipboard.writeText(copyText.trim());
+        showCopyToast(btn, '已复制');
+        
+        // 临时改变按钮样式
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '✓';
+        btn.style.background = '#4CAF50';
+        btn.style.color = 'white';
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.style.background = '';
+          btn.style.color = '';
+        }, 1000);
+      } catch (err) {
+        // 降级方案：使用传统方法
+        const textArea = document.createElement('textarea');
+        textArea.value = copyText.trim();
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showCopyToast(btn, '已复制');
+        } catch (err2) {
+          showCopyToast(btn, '复制失败');
+        }
+        document.body.removeChild(textArea);
+      }
+    });
+  });
+}
 
 // 重新排序股票列表
 async function reorderTickers(fromIndex, toIndex) {
@@ -632,6 +737,8 @@ async function fetchTickerData(symbol) {
         regularMarketPrice: response.data.regularMarketPrice,
         regularMarketChange: response.data.regularMarketChange,
         regularMarketChangePercent: response.data.regularMarketChangePercent,
+        weibi: response.data.weibi, // 委比
+        liangbi: response.data.liangbi, // 量比
         currency: response.data.currency,
         stockName: response.data.stockName
       };

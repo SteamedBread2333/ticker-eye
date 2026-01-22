@@ -183,10 +183,40 @@ async function fetchPriceFromSina(symbol) {
       return null;
     }
     
+    // 计算委比（仅A股和港股，美股不计算委比）
+    // 美股不计算委比的原因：美股交易机制不同，主要是机构交易，委比指标不适用
+    // 新浪API字段：9-18是买盘（数量和价格交替），19-28是卖盘（数量和价格交替）
+    let weibi = null;
+    if (fields.length > 28 && !sinaCode.startsWith('gb_')) {
+      try {
+        const buy1 = parseFloat(fields[9]) || 0; // 买一量
+        const buy2 = parseFloat(fields[11]) || 0; // 买二量
+        const buy3 = parseFloat(fields[13]) || 0; // 买三量
+        const buy4 = parseFloat(fields[15]) || 0; // 买四量
+        const buy5 = parseFloat(fields[17]) || 0; // 买五量
+        const sell1 = parseFloat(fields[19]) || 0; // 卖一量
+        const sell2 = parseFloat(fields[21]) || 0; // 卖二量
+        const sell3 = parseFloat(fields[23]) || 0; // 卖三量
+        const sell4 = parseFloat(fields[25]) || 0; // 卖四量
+        const sell5 = parseFloat(fields[27]) || 0; // 卖五量
+        
+        const buyTotal = buy1 + buy2 + buy3 + buy4 + buy5;
+        const sellTotal = sell1 + sell2 + sell3 + sell4 + sell5;
+        const total = buyTotal + sellTotal;
+        
+        if (total > 0) {
+          weibi = ((buyTotal - sellTotal) / total * 100);
+        }
+      } catch (e) {
+        // 忽略委比计算错误
+      }
+    }
+    
     return {
       regularMarketPrice: price,
       regularMarketChange: change,
       regularMarketChangePercent: changePercent,
+      weibi: weibi, // 委比（百分比）
       currency: normalizedSymbol.endsWith('.HK') ? 'HKD' : 
                 (normalizedSymbol.endsWith('.SH') || normalizedSymbol.endsWith('.SZ')) ? 'CNY' : 'USD',
       normalizedSymbol: normalizedSymbol,
@@ -300,10 +330,57 @@ async function fetchPriceFromTencent(symbol) {
     // 如果涨跌额无效，计算
     const finalChange = isNaN(change) ? (price - prevClose) : change;
     
+    // 计算委比（仅A股和港股，美股不计算委比）
+    // 美股不计算委比的原因：美股交易机制不同，主要是机构交易，委比指标不适用
+    // 腾讯API字段：9-18是买盘（价格和数量交替），19-28是卖盘（价格和数量交替）
+    let weibi = null;
+    // 检查是否是A股或港股（不是美股）
+    const isAStockOrHK = !tencentCode.startsWith('us');
+    if (fields.length > 28 && isAStockOrHK) {
+      try {
+        // 确保字段存在且是有效数字
+        const buy1 = fields[10] ? parseFloat(fields[10]) : 0; // 买一量
+        const buy2 = fields[12] ? parseFloat(fields[12]) : 0; // 买二量
+        const buy3 = fields[14] ? parseFloat(fields[14]) : 0; // 买三量
+        const buy4 = fields[16] ? parseFloat(fields[16]) : 0; // 买四量
+        const buy5 = fields[18] ? parseFloat(fields[18]) : 0; // 买五量
+        const sell1 = fields[20] ? parseFloat(fields[20]) : 0; // 卖一量
+        const sell2 = fields[22] ? parseFloat(fields[22]) : 0; // 卖二量
+        const sell3 = fields[24] ? parseFloat(fields[24]) : 0; // 卖三量
+        const sell4 = fields[26] ? parseFloat(fields[26]) : 0; // 卖四量
+        const sell5 = fields[28] ? parseFloat(fields[28]) : 0; // 卖五量
+        
+        const buyTotal = buy1 + buy2 + buy3 + buy4 + buy5;
+        const sellTotal = sell1 + sell2 + sell3 + sell4 + sell5;
+        const total = buyTotal + sellTotal;
+        
+        if (total > 0 && !isNaN(buyTotal) && !isNaN(sellTotal)) {
+          weibi = ((buyTotal - sellTotal) / total * 100);
+        }
+      } catch (e) {
+        // 忽略委比计算错误
+      }
+    }
+    
+    // 获取量比（字段49，仅A股和港股）
+    let liangbi = null;
+    if (fields.length > 49 && isAStockOrHK) {
+      try {
+        const liangbiValue = parseFloat(fields[49]);
+        if (!isNaN(liangbiValue) && liangbiValue > 0) {
+          liangbi = liangbiValue;
+        }
+      } catch (e) {
+        // 忽略量比解析错误
+      }
+    }
+    
     return {
       regularMarketPrice: price,
       regularMarketChange: finalChange,
       regularMarketChangePercent: changePercent,
+      weibi: weibi, // 委比（百分比）
+      liangbi: liangbi, // 量比
       currency: normalizedSymbol.endsWith('.HK') ? 'HKD' : 
                 (normalizedSymbol.endsWith('.SH') || normalizedSymbol.endsWith('.SZ')) ? 'CNY' : 'USD',
       normalizedSymbol: normalizedSymbol,

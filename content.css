@@ -183,6 +183,59 @@
   color: #4CAF50;
 }
 
+.ticker-content .ticker-weibi {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ticker-content .ticker-weibi.positive {
+  color: #f44336;
+}
+
+.ticker-content .ticker-weibi.negative {
+  color: #4CAF50;
+}
+
+.ticker-content .ticker-liangbi {
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: #666;
+}
+
+.ticker-copy-item-btn {
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 11px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.ticker-item:hover .ticker-copy-item-btn {
+  opacity: 0.8;
+}
+
+.ticker-copy-item-btn:hover {
+  background: rgba(102, 126, 234, 0.1);
+  color: #667eea;
+  transform: scale(1.1);
+}
+
+.ticker-copy-item-btn:active {
+  transform: scale(0.95);
+}
+
 .ticker-content .ticker-item.ticker-error {
   opacity: 0.6;
 }
