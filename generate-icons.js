@@ -29,16 +29,23 @@ if (!fs.existsSync(iconsDir)) {
 }
 
 async function generateIcon(size) {
-  // 创建SVG
+  // 创建SVG - 金属光泽金色背景
   const svg = `
     <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
+          <stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1" />
+          <stop offset="50%" style="stop-color:#B8860B;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#8B6914;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#FFF;stop-opacity:0.3" />
+          <stop offset="50%" style="stop-color:#FFF;stop-opacity:0" />
+          <stop offset="100%" style="stop-color:#FFF;stop-opacity:0.1" />
         </linearGradient>
       </defs>
       <rect width="${size}" height="${size}" rx="${size * 0.15}" fill="url(#grad)"/>
+      <rect width="${size}" height="${size}" rx="${size * 0.15}" fill="url(#shine)"/>
       <path d="M ${size * 0.15} ${size * 0.85} 
               L ${size * 0.35} ${size * 0.65} 
               L ${size * 0.55} ${size * 0.7} 

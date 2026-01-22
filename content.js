@@ -316,7 +316,7 @@ async function updateTickers() {
               <div class="ticker-symbol ticker-symbol-clickable" data-symbol="${symbol}" title="点击复制代码: ${symbol}">${symbol}</div>
               <div class="ticker-error-text">获取失败</div>
             </div>
-            <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制股票代码">复制</button>
+            <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制股票代码">Ask AI</button>
           </div>
         `;
       }
@@ -376,7 +376,7 @@ async function updateTickers() {
             </div>
             ${ratioHtml}
           </div>
-          <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制该股票所有信息">复制</button>
+          <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制该股票所有信息">Ask AI</button>
         </div>
       `;
     })

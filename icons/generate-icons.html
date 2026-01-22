@@ -28,10 +28,11 @@
     function drawIcon(canvas, size) {
       const ctx = canvas.getContext('2d');
       
-      // 渐变背景
+      // 金属光泽金色渐变背景
       const gradient = ctx.createLinearGradient(0, 0, size, size);
-      gradient.addColorStop(0, '#4CAF50');
-      gradient.addColorStop(1, '#2E7D32');
+      gradient.addColorStop(0, '#D4AF37');
+      gradient.addColorStop(0.5, '#B8860B');
+      gradient.addColorStop(1, '#8B6914');
       
       // 绘制圆角矩形背景
       ctx.fillStyle = gradient;
@@ -47,6 +48,14 @@
       ctx.lineTo(0, radius);
       ctx.quadraticCurveTo(0, 0, radius, 0);
       ctx.closePath();
+      ctx.fill();
+      
+      // 添加金属光泽高光效果
+      const shineGradient = ctx.createLinearGradient(0, 0, size, size);
+      shineGradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+      shineGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+      shineGradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)');
+      ctx.fillStyle = shineGradient;
       ctx.fill();
       
       // 绘制股票趋势线
