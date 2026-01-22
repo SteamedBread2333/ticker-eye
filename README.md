@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="icons/icon.svg" alt="Ticker Eye" width="128" height="128">
+</div>
+
 # Ticker Eye - 股票行情
 
 一个实时股票行情Chrome扩展，可拖拽浮窗显示，每3秒自动刷新。
