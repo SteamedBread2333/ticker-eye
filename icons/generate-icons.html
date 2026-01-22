@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>生成图标</title>
+</head>
+<body>
+  <h1>图标生成器</h1>
+  <p>打开此页面，右键点击下方的图标，选择"图片另存为"保存为PNG格式</p>
+  <p>然后使用图片编辑工具调整大小：</p>
+  <ul>
+    <li>icon16.png - 16x16像素</li>
+    <li>icon48.png - 48x48像素</li>
+    <li>icon128.png - 128x128像素</li>
+  </ul>
+  
+  <div style="margin: 20px;">
+    <h2>16x16</h2>
+    <canvas id="canvas16" width="16" height="16"></canvas>
+    
+    <h2>48x48</h2>
+    <canvas id="canvas48" width="48" height="48"></canvas>
+    
+    <h2>128x128</h2>
+    <canvas id="canvas128" width="128" height="128"></canvas>
+  </div>
+  
+  <script>
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      
+      // 渐变背景
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#4CAF50');
+      gradient.addColorStop(1, '#2E7D32');
+      
+      // 绘制圆角矩形背景
+      ctx.fillStyle = gradient;
+      const radius = size * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(size - radius, 0);
+      ctx.quadraticCurveTo(size, 0, size, radius);
+      ctx.lineTo(size, size - radius);
+      ctx.quadraticCurveTo(size, size, size - radius, size);
+      ctx.lineTo(radius, size);
+      ctx.quadraticCurveTo(0, size, 0, size - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.fill();
+      
+      // 绘制股票趋势线
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = Math.max(1, size / 32);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      const padding = size * 0.15;
+      const chartWidth = size - padding * 2;
+      const chartHeight = size * 0.5;
+      const startX = padding;
+      const startY = size - padding - chartHeight;
+      
+      ctx.beginPath();
+      ctx.moveTo(startX, startY + chartHeight * 0.7);
+      ctx.lineTo(startX + chartWidth * 0.2, startY + chartHeight * 0.5);
+      ctx.lineTo(startX + chartWidth * 0.4, startY + chartHeight * 0.6);
+      ctx.lineTo(startX + chartWidth * 0.6, startY + chartHeight * 0.2);
+      ctx.lineTo(startX + chartWidth * 0.8, startY + chartHeight * 0.4);
+      ctx.lineTo(startX + chartWidth, startY);
+      ctx.stroke();
+      
+      // 绘制终点圆点
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(startX + chartWidth, startY, Math.max(2, size / 25), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    drawIcon(document.getElementById('canvas16'), 16);
+    drawIcon(document.getElementById('canvas48'), 48);
+    drawIcon(document.getElementById('canvas128'), 128);
+    
+    // 添加下载功能
+    function downloadCanvas(canvas, filename) {
+      canvas.toBlob(function(blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+    
+    // 为每个canvas添加下载按钮
+    ['16', '48', '128'].forEach(size => {
+      const canvas = document.getElementById(`canvas${size}`);
+      const btn = document.createElement('button');
+      btn.textContent = `下载 icon${size}.png`;
+      btn.onclick = () => downloadCanvas(canvas, `icon${size}.png`);
+      canvas.parentElement.appendChild(btn);
+    });
+  </script>
+</body>
+</html>

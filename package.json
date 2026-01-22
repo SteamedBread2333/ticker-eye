@@ -1,0 +1,11 @@
+{
+  "name": "ticker-eye",
+  "version": "1.0.0",
+  "description": "Chrome extension for stock ticker and financial news",
+  "scripts": {
+    "generate-icons": "node generate-icons.js"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.0"
+  }
+}

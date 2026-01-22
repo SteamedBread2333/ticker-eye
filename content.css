@@ -1,0 +1,212 @@
+/* 股票行情浮窗 - 可拖拽 */
+#ticker-eye-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 999998;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  pointer-events: auto;
+  width: 220px;
+  user-select: none;
+}
+
+.ticker-header {
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px 12px 0 0;
+  cursor: move;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ticker-title {
+  font-weight: 600;
+  font-size: 13px;
+  user-select: none;
+}
+
+.ticker-content {
+  padding: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ticker-empty {
+  text-align: center;
+  padding: 20px;
+  color: #999;
+  font-size: 13px;
+}
+
+.ticker-content .ticker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.ticker-content .ticker-item:hover {
+  background: #e9ecef;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.ticker-order-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ticker-order-btn {
+  background: transparent;
+  border: 1px solid #ddd;
+  color: #666;
+  font-size: 12px;
+  line-height: 1;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  opacity: 0.6;
+}
+
+.ticker-item:hover .ticker-order-btn {
+  opacity: 1;
+}
+
+.ticker-order-btn:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+  transform: scale(1.1);
+}
+
+.ticker-order-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.ticker-order-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+
+.ticker-content .ticker-symbol {
+  font-weight: 600;
+  color: #333;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.ticker-content .ticker-symbol:hover {
+  color: #667eea;
+}
+
+.ticker-symbol-clickable {
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.ticker-symbol-clickable:hover {
+  color: #667eea;
+}
+
+
+.ticker-copy-toast {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 999999;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(0);
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.ticker-copy-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-5px);
+}
+
+.ticker-content .ticker-price {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333;
+}
+
+.ticker-content .ticker-price.positive {
+  color: #f44336;
+}
+
+.ticker-content .ticker-price.negative {
+  color: #4CAF50;
+}
+
+.ticker-content .ticker-change {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ticker-content .ticker-change.positive {
+  color: #f44336;
+}
+
+.ticker-content .ticker-change.negative {
+  color: #4CAF50;
+}
+
+.ticker-content .ticker-item.ticker-error {
+  opacity: 0.6;
+}
+
+.ticker-content .ticker-error-text {
+  color: #999;
+  font-size: 12px;
+}
+
+/* 滚动条样式 */
+.ticker-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ticker-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.ticker-content::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.ticker-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
