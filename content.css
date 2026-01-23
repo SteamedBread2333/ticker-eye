@@ -69,10 +69,9 @@
 
 .ticker-content {
   padding: 10px;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 6px;
-  align-content: flex-start;
   overflow: visible;
   width: 100%;
   box-sizing: border-box;
@@ -96,9 +95,7 @@
   border: 1px solid #e9ecef;
   transition: all 0.2s;
   position: relative;
-  min-width: 180px;
-  flex: 0 1 calc(50% - 3px);
-  max-width: calc(50% - 3px);
+  min-width: 240px;
   box-sizing: border-box;
 }
 
