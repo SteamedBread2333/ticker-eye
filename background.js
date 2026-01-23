@@ -211,15 +211,29 @@ async function fetchPriceFromSina(symbol) {
       }
     }
     
+    // 获取时间戳（新浪API美股格式中字段3是时间）
+    let updateTime = null;
+    if (sinaCode.startsWith('gb_') && fields.length > 3 && fields[3]) {
+      try {
+        const timeStr = fields[3].trim();
+        if (timeStr) {
+          updateTime = timeStr;
+        }
+      } catch (e) {
+        // 忽略时间解析错误
+      }
+    }
+    
     return {
       regularMarketPrice: price,
       regularMarketChange: change,
       regularMarketChangePercent: changePercent,
       weibi: weibi, // 委比（百分比）
       currency: normalizedSymbol.endsWith('.HK') ? 'HKD' : 
-                (normalizedSymbol.endsWith('.SH') || normalizedSymbol.endsWith('.SZ')) ? 'CNY' : 'USD',
+                (normalizedSymbol.endsWith('.SH') || normalizedSymbol.endsWith('.SZ') || normalizedSymbol.endsWith('.CNS')) ? 'CNY' : 'USD',
       normalizedSymbol: normalizedSymbol,
       stockName: fields[0] || '', // 股票名称
+      updateTime: updateTime, // 数据更新时间
       source: 'sina'
     };
   } catch (error) {
@@ -378,6 +392,35 @@ async function fetchPriceFromTencent(symbol) {
       }
     }
     
+    // 获取时间戳（字段30通常是时间，格式可能是 HHMMSS 或完整时间戳）
+    let updateTime = null;
+    if (fields.length > 30 && fields[30]) {
+      try {
+        const timeStr = fields[30].trim();
+        // 尝试解析时间格式
+        if (timeStr && timeStr.length >= 6) {
+          // 如果是14位数字（YYYYMMDDHHMMSS），转换为标准格式
+          if (/^\d{14}$/.test(timeStr)) {
+            const year = timeStr.substring(0, 4);
+            const month = timeStr.substring(4, 6);
+            const day = timeStr.substring(6, 8);
+            const hour = timeStr.substring(8, 10);
+            const minute = timeStr.substring(10, 12);
+            const second = timeStr.substring(12, 14);
+            updateTime = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+          }
+          // 如果是6位数字（HHMMSS），不处理（因为只有时间没有日期，不准确）
+          // 如果是其他格式且看起来像时间（包含 - 和 :），直接使用
+          else if (timeStr.includes('-') && timeStr.includes(':')) {
+            updateTime = timeStr;
+          }
+          // 其他格式忽略，因为不确定是否准确
+        }
+      } catch (e) {
+        // 忽略时间解析错误
+      }
+    }
+    
     return {
       regularMarketPrice: price,
       regularMarketChange: finalChange,
@@ -385,9 +428,10 @@ async function fetchPriceFromTencent(symbol) {
       weibi: weibi, // 委比（百分比）
       liangbi: liangbi, // 量比
       currency: normalizedSymbol.endsWith('.HK') ? 'HKD' : 
-                (normalizedSymbol.endsWith('.SH') || normalizedSymbol.endsWith('.SZ')) ? 'CNY' : 'USD',
+                (normalizedSymbol.endsWith('.SH') || normalizedSymbol.endsWith('.SZ') || normalizedSymbol.endsWith('.CNS')) ? 'CNY' : 'USD',
       normalizedSymbol: normalizedSymbol,
       stockName: fields[1] || '', // 股票名称
+      updateTime: updateTime, // 数据更新时间
       source: 'tencent'
     };
   } catch (error) {

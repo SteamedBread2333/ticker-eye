@@ -765,19 +765,35 @@ function setupCopyButtons(contentDiv, results, tickers) {
         const weibi = data.weibi;
         const liangbi = data.liangbi;
         const stockName = data.stockName || '';
+        const updateTime = data.updateTime; // 数据更新时间
         
-        // 获取当前日期时间
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const dateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        // 使用数据更新时间，如果接口没有提供时间则不显示时间
+        let dateTime = null;
+        if (updateTime) {
+          // 如果时间格式是14位数字（YYYYMMDDHHMMSS），格式化它
+          if (/^\d{14}$/.test(updateTime)) {
+            const year = updateTime.substring(0, 4);
+            const month = updateTime.substring(4, 6);
+            const day = updateTime.substring(6, 8);
+            const hour = updateTime.substring(8, 10);
+            const minute = updateTime.substring(10, 12);
+            const second = updateTime.substring(12, 14);
+            dateTime = `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+          } 
+          // 如果已经是格式化好的时间（包含 - 和 :），直接使用
+          else if (updateTime.includes('-') && updateTime.includes(':')) {
+            dateTime = updateTime;
+          }
+          // 如果是6位数字（HHMMSS），说明接口只提供了时间，不显示（因为日期可能是当前日期，不准确）
+          // 其他格式也忽略，因为不确定是否准确
+        }
         
         // 构建要复制的文本
-        copyText = `[${dateTime}]\n`;
+        if (dateTime) {
+          copyText = `[${dateTime}]\n`;
+        } else {
+          copyText = ''; // 接口没有提供准确时间，不显示时间
+        }
         copyText += `${stockName ? stockName + ' ' : ''}${symbol}\n`;
         copyText += `价格: ${formatPrice(price)}\n`;
         copyText += `涨跌: ${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%\n`;
@@ -1065,7 +1081,8 @@ async function fetchTickerData(symbol) {
         weibi: response.data.weibi, // 委比
         liangbi: response.data.liangbi, // 量比
         currency: response.data.currency,
-        stockName: response.data.stockName
+        stockName: response.data.stockName,
+        updateTime: response.data.updateTime // 数据更新时间
       };
     }
   } catch (error) {
