@@ -18,6 +18,114 @@
   user-select: none;
   resize: both;
   overflow: hidden;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#ticker-eye-container.minimizing {
+  transform: scale(0) rotate(360deg);
+  opacity: 0;
+}
+
+#ticker-eye-container.expanding {
+  animation: expandWindow 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes expandWindow {
+  0% {
+    transform: scale(0) rotate(-180deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1) rotate(10deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* 最小化按钮 */
+.ticker-minimize-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  margin-left: auto;
+  opacity: 0.7;
+  padding: 0;
+}
+
+.ticker-minimize-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.ticker-minimize-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.ticker-minimize-btn:active {
+  transform: scale(0.95);
+}
+
+/* 金元宝图标 - 固定在右下角 */
+.ticker-gold-icon {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0) rotate(-180deg);
+  transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  filter: drop-shadow(0 4px 12px rgba(255, 203, 39, 0.5));
+  animation: goldIconFloat 3s ease-in-out infinite;
+}
+
+.ticker-gold-icon.show {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.ticker-gold-icon:hover {
+  transform: scale(1.2) rotate(10deg);
+  filter: drop-shadow(0 8px 20px rgba(255, 203, 39, 0.7));
+  animation-play-state: paused;
+}
+
+@keyframes goldIconFloat {
+  0%, 100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-10px) scale(1.05) rotate(5deg);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.08) rotate(-5deg);
+  }
+  75% {
+    transform: translateY(-8px) scale(1.03) rotate(3deg);
+  }
+}
+
+.ticker-gold-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .ticker-header {
@@ -28,37 +136,32 @@
   cursor: move;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   min-height: 24px;
   box-shadow: 0 2px 8px rgba(138, 43, 226, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  position: relative;
 }
 
 .ticker-drag-icon {
   width: 20px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 2px;
-  position: relative;
+  height: 20px;
   cursor: move;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s;
 }
 
-.ticker-drag-icon::before,
-.ticker-drag-icon::after {
-  content: '';
-  position: absolute;
-  width: 20px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 2px;
-  left: 0;
+.ticker-drag-icon:hover {
+  color: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
 }
 
-.ticker-drag-icon::before {
-  top: -6px;
-}
-
-.ticker-drag-icon::after {
-  top: 6px;
+.ticker-drag-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .ticker-title {
@@ -302,7 +405,7 @@
   right: 2px;
   width: 16px;
   height: 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath d='M552.228571 179.712v664.576l68.699429-68.717714a36.571429 36.571429 0 0 1 51.712 51.730285l-129.28 129.28a37.229714 37.229714 0 0 1-0.950857 0.914286 36.48 36.48 0 0 1-26.770286 11.648c-9.014857 0-17.261714-3.254857-23.643428-8.667428a36.827429 36.827429 0 0 1-4.571429-3.876572l-129.28-129.298286a36.571429 36.571429 0 1 1 51.712-51.730285L479.085714 844.8V179.218286l-69.211428 69.211428a36.571429 36.571429 0 1 1-51.712-51.730285l129.28-129.28c1.462857-1.462857 2.980571-2.742857 4.571428-3.894858 6.381714-5.412571 14.628571-8.667429 23.643429-8.667428 10.569143 0 20.096 4.48 26.770286 11.648l0.932571 0.914286 129.298286 129.28a36.571429 36.571429 0 1 1-51.712 51.730285l-68.717715-68.717714z' fill='%238B6FA8'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath d='M656.794 77.568l72.448 72.397-579.277 579.277-72.397-72.448L656.794 77.568z m72.448 361.984L801.638 512 512 801.638l-72.397-72.396 289.639-289.639z' fill='%238B6FA8'/%3E%3C/svg%3E");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -310,8 +413,6 @@
   pointer-events: none;
   opacity: 0.5;
   transition: opacity 0.2s;
-  transform: rotate(-45deg);
-  transform-origin: center;
 }
 
 #ticker-eye-container:hover::after {
