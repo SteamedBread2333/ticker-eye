@@ -183,11 +183,10 @@ async function fetchPriceFromSina(symbol) {
       return null;
     }
     
-    // 计算委比（仅A股和港股，美股不计算委比）
-    // 美股不计算委比的原因：美股交易机制不同，主要是机构交易，委比指标不适用
+    // 计算委比（尝试对所有市场计算，包括美股和港股）
     // 新浪API字段：9-18是买盘（数量和价格交替），19-28是卖盘（数量和价格交替）
     let weibi = null;
-    if (fields.length > 28 && !sinaCode.startsWith('gb_')) {
+    if (fields.length > 28) {
       try {
         const buy1 = parseFloat(fields[9]) || 0; // 买一量
         const buy2 = parseFloat(fields[11]) || 0; // 买二量
@@ -330,13 +329,10 @@ async function fetchPriceFromTencent(symbol) {
     // 如果涨跌额无效，计算
     const finalChange = isNaN(change) ? (price - prevClose) : change;
     
-    // 计算委比（仅A股和港股，美股不计算委比）
-    // 美股不计算委比的原因：美股交易机制不同，主要是机构交易，委比指标不适用
+    // 计算委比（尝试对所有市场计算，包括美股和港股）
     // 腾讯API字段：9-18是买盘（价格和数量交替），19-28是卖盘（价格和数量交替）
     let weibi = null;
-    // 检查是否是A股或港股（不是美股）
-    const isAStockOrHK = !tencentCode.startsWith('us');
-    if (fields.length > 28 && isAStockOrHK) {
+    if (fields.length > 28) {
       try {
         // 确保字段存在且是有效数字
         const buy1 = fields[10] ? parseFloat(fields[10]) : 0; // 买一量
@@ -362,12 +358,14 @@ async function fetchPriceFromTencent(symbol) {
       }
     }
     
-    // 获取量比（字段49，仅A股和港股）
+    // 获取量比（字段43，索引43）
+    // 量比正常范围：0-10之间，超过10的值可能是其他数据，应过滤
     let liangbi = null;
-    if (fields.length > 49 && isAStockOrHK) {
+    if (fields.length > 43) {
       try {
-        const liangbiValue = parseFloat(fields[49]);
-        if (!isNaN(liangbiValue) && liangbiValue > 0) {
+        const liangbiValue = parseFloat(fields[43]);
+        // 量比正常范围：0.01 到 10，过滤异常值
+        if (!isNaN(liangbiValue) && liangbiValue > 0 && liangbiValue <= 10) {
           liangbi = liangbiValue;
         }
       } catch (e) {
