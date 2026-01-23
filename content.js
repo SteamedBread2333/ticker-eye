@@ -201,13 +201,18 @@ function setupDrag(header) {
     const maxX = window.innerWidth - tickerContainer.offsetWidth;
     const maxY = window.innerHeight - tickerContainer.offsetHeight;
     
+    // 允许 Y 为负值，但限制最小值，确保至少 header 的一部分可见
+    // 这样即使被浏览器标签栏遮挡，也能通过点击可见部分拖下来
+    const headerHeight = header.offsetHeight || 40;
+    const minY = -headerHeight + 10; // 允许向上移动，但至少保留 10px 可见
+    
     const finalX = Math.max(0, Math.min(x, maxX));
-    const finalY = Math.max(0, Math.min(y, maxY));
+    const finalY = Math.max(minY, Math.min(y, maxY));
     
     tickerContainer.style.left = finalX + 'px';
     tickerContainer.style.top = finalY + 'px';
     
-    // 保存位置
+    // 保存位置（保存实际位置，即使为负值）
     savePosition(finalX, finalY);
   });
   
@@ -431,8 +436,20 @@ async function loadPosition() {
     if (result.tickerPosition && tickerContainer) {
       const pos = result.tickerPosition;
       if (pos.x !== undefined && pos.y !== undefined) {
+        // 检查位置是否合理，如果 header 完全被遮挡，调整到可见位置
+        const header = tickerContainer.querySelector('.ticker-header');
+        const headerHeight = header ? header.offsetHeight : 40;
+        const minVisibleY = -headerHeight + 10; // 至少保留 10px 可见
+        
+        let finalY = pos.y;
+        if (finalY < minVisibleY) {
+          finalY = minVisibleY;
+          // 如果调整了位置，保存新位置
+          savePosition(pos.x, finalY);
+        }
+        
         tickerContainer.style.left = pos.x + 'px';
-        tickerContainer.style.top = pos.y + 'px';
+        tickerContainer.style.top = finalY + 'px';
       }
       if (pos.width !== undefined && pos.width >= 200) {
         tickerContainer.style.width = pos.width + 'px';
