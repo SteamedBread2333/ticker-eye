@@ -245,9 +245,14 @@ async function fetchPriceFromTencent(symbol) {
       const code = symbol.replace(/\.SZ$/i, '');
       tencentCode = `sz${code}`;
     } else if (normalizedSymbol.endsWith('.HK')) {
-      // 港股：hk + 代码（补零到5位）
+      // 港股：hk + 代码（纯数字补零到5位，字母代码如HSI不补零）
       const hkCode = symbol.replace(/\.HK$/i, '');
-      tencentCode = `hk${hkCode.padStart(5, '0')}`;
+      // 如果是纯数字，补零到5位；如果是字母代码（如HSI指数），不补零
+      if (/^\d+$/.test(hkCode)) {
+        tencentCode = `hk${hkCode.padStart(5, '0')}`;
+      } else {
+        tencentCode = `hk${hkCode}`;
+      }
     } else if (/^\d{6}$/.test(symbol)) {
       // 6位数字，根据normalizeSymbol的结果判断
       const normalized = normalizeSymbol(symbol);
@@ -358,14 +363,14 @@ async function fetchPriceFromTencent(symbol) {
       }
     }
     
-    // 获取量比（字段43，索引43）
-    // 量比正常范围：0-10之间，超过10的值可能是其他数据，应过滤
+    // 获取量比（字段49，索引49）
+    // VR范围：150-250健康，250-350偏热，350-450过热，450+极度危险
     let liangbi = null;
-    if (fields.length > 43) {
+    if (fields.length > 49) {
       try {
-        const liangbiValue = parseFloat(fields[43]);
-        // 量比正常范围：0.01 到 10，过滤异常值
-        if (!isNaN(liangbiValue) && liangbiValue > 0 && liangbiValue <= 10) {
+        const liangbiValue = parseFloat(fields[49]);
+        // 允许更大的量比值（移除上限限制）
+        if (!isNaN(liangbiValue) && liangbiValue > 0) {
           liangbi = liangbiValue;
         }
       } catch (e) {

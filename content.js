@@ -563,9 +563,20 @@ async function updateTickers() {
       const stockName = data.stockName || '';
       const displayName = stockName ? `${stockName} (${symbol})` : symbol;
       
-      // 委比和量比显示逻辑
+      // 判断是否是指数（指数不显示VR和BR）
+      // 1. 检查股票名称中是否包含"指数"、"指"（如"深证综指"、"上证指数"）
+      // 2. 检查代码模式：字母代码（如HSI、NDX、SPX等）通常是指数
+      // 3. 检查A股指数代码模式：399xxx（深证指数）、000xxx（上证指数，但000开头也有股票，需结合名称判断）
+      const isIndex = stockName.includes('指数') || 
+                      stockName.includes('Index') ||
+                      stockName.includes('指') || // 包含"指"字（如"深证综指"）
+                      /^[A-Z]{2,5}\.(HK|US)$/i.test(symbol) ||
+                      /^(HSI|NDX|SPX|DJI|IXIC|RUT|VIX)/i.test(symbol) ||
+                      /^399\d{3}\.(SZ|SH)$/i.test(symbol); // 399xxx是深证指数
+      
+      // 委比和量比显示逻辑（指数不显示）
       let weibiHtml = '';
-      if (weibi !== null && !isNaN(weibi)) {
+      if (!isIndex && weibi !== null && !isNaN(weibi)) {
         const weibiPositive = weibi >= 0;
         weibiHtml = `<span class="ticker-weibi ${weibiPositive ? 'positive' : 'negative'}" title="委比 (Bid Ratio)">
           BR: ${weibiPositive ? '+' : ''}${weibi.toFixed(2)}%
@@ -573,9 +584,30 @@ async function updateTickers() {
       }
       
       let liangbiHtml = '';
-      if (liangbi !== null && !isNaN(liangbi)) {
-        liangbiHtml = `<span class="ticker-liangbi" title="量比 (Volume Ratio)">
-          VR: ${liangbi.toFixed(2)}
+      if (!isIndex && liangbi !== null && !isNaN(liangbi)) {
+        // 根据VR数值范围添加不同的颜色类（显示值已除以100）
+        // 1.50-2.50：健康的强势市场（绿色，对应原始值150-250）
+        // 2.50-3.50：偏热，需要警惕（黄色，对应原始值250-350）
+        // 3.50-4.50：过热，准备撤退（橙色，对应原始值350-450）
+        // 4.50以上：极度危险，随时暴跌（红色，对应原始值450以上）
+        let liangbiClass = 'ticker-liangbi';
+        let emoji = '';
+        if (liangbi >= 4.50) {
+          liangbiClass += ' liangbi-danger'; // 极度危险，红色
+          emoji = '🚨'; // 极度危险
+        } else if (liangbi >= 3.50) {
+          liangbiClass += ' liangbi-overheat'; // 过热，橙色
+          emoji = '🔥'; // 过热
+        } else if (liangbi >= 2.50) {
+          liangbiClass += ' liangbi-warning'; // 偏热，黄色
+          emoji = '⚠️'; // 警告
+        } else if (liangbi >= 1.50) {
+          liangbiClass += ' liangbi-healthy'; // 健康，绿色
+          emoji = '✅'; // 健康
+        }
+        
+        liangbiHtml = `<span class="${liangbiClass}" title="量比 (Volume Ratio)">
+          VR: ${liangbi.toFixed(2)} ${emoji}
         </span>`;
       }
       
@@ -588,8 +620,11 @@ async function updateTickers() {
         </div>`;
       }
       
+      // 根据涨跌添加背景色类
+      const itemClass = `ticker-item ${isPositive ? 'ticker-item-positive' : 'ticker-item-negative'}`;
+      
       return `
-        <div class="ticker-item" data-symbol="${symbol}" data-index="${index}">
+        <div class="${itemClass}" data-symbol="${symbol}" data-index="${index}">
           <div class="ticker-order-controls">
             <button class="ticker-order-btn ticker-order-up" data-index="${index}" ${index === 0 ? 'disabled' : ''} title="上移">▲</button>
             <button class="ticker-order-btn ticker-order-down" data-index="${index}" ${index === tickers.length - 1 ? 'disabled' : ''} title="下移">▼</button>

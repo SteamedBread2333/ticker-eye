@@ -202,10 +202,29 @@
   box-sizing: border-box;
 }
 
+/* 上涨背景色（中国股市：红色表示上涨） */
+.ticker-content .ticker-item.ticker-item-positive {
+  background: rgba(239, 68, 68, 0.08); /* 浅红色背景 */
+  border-color: rgba(239, 68, 68, 0.15);
+}
+
+/* 下跌背景色（中国股市：绿色表示下跌） */
+.ticker-content .ticker-item.ticker-item-negative {
+  background: rgba(16, 185, 129, 0.08); /* 浅绿色背景 */
+  border-color: rgba(16, 185, 129, 0.15);
+}
+
 .ticker-content .ticker-item:hover {
-  background: #e9ecef;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
+}
+
+.ticker-content .ticker-item.ticker-item-positive:hover {
+  background: rgba(239, 68, 68, 0.12); /* 悬停时稍深的红色 */
+}
+
+.ticker-content .ticker-item.ticker-item-negative:hover {
+  background: rgba(16, 185, 129, 0.12); /* 悬停时稍深的绿色 */
 }
 
 .ticker-order-controls {
@@ -345,6 +364,26 @@
   font-weight: 500;
   white-space: nowrap;
   color: #666;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* VR颜色规则 */
+.ticker-content .ticker-liangbi.liangbi-healthy {
+  color: #10b981; /* 绿色 - 150-250：健康的强势市场 */
+}
+
+.ticker-content .ticker-liangbi.liangbi-warning {
+  color: #f59e0b; /* 黄色 - 250-350：偏热，需要警惕 */
+}
+
+.ticker-content .ticker-liangbi.liangbi-overheat {
+  color: #f97316; /* 橙色 - 350-450：过热，准备撤退 */
+}
+
+.ticker-content .ticker-liangbi.liangbi-danger {
+  color: #ef4444; /* 红色 - 450以上：极度危险，随时暴跌 */
 }
 
 .ticker-copy-item-btn {
