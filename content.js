@@ -7,6 +7,27 @@ let isMinimized = false;
 let minimizedPosition = null;
 let goldIcon = null;
 
+// 格式化价格，完整显示不四舍五入
+function formatPrice(price) {
+  if (price === null || price === undefined || isNaN(price)) {
+    return '0';
+  }
+  
+  // 将数字转换为字符串，保留完整精度
+  // 使用足够的小数位来避免精度丢失（15位是JavaScript的安全精度）
+  let priceStr = price.toString();
+  
+  // 如果包含科学计数法，转换为普通数字
+  if (priceStr.includes('e') || priceStr.includes('E')) {
+    // 对于科学计数法，使用toFixed保留足够的小数位
+    // 注意：toFixed会四舍五入，但对于科学计数法转换，这是必要的
+    priceStr = price.toFixed(15);
+  }
+  
+  // 移除末尾不必要的0和小数点
+  return priceStr.replace(/\.?0+$/, '');
+}
+
 // 初始化
 async function init() {
   try {
@@ -654,7 +675,7 @@ async function updateTickers() {
             <div class="ticker-symbol ticker-symbol-clickable" data-symbol="${symbol}" title="点击复制代码: ${symbol}">${displayName}</div>
             <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;">
               <span class="ticker-price ${isPositive ? 'positive' : 'negative'}">
-                ${price.toFixed(2)}
+                ${formatPrice(price)}
               </span>
               <span class="ticker-change ${isPositive ? 'positive' : 'negative'}">
                 ${isPositive ? '+' : ''}${changePercent.toFixed(2)}%
@@ -758,7 +779,7 @@ function setupCopyButtons(contentDiv, results, tickers) {
         // 构建要复制的文本
         copyText = `[${dateTime}]\n`;
         copyText += `${stockName ? stockName + ' ' : ''}${symbol}\n`;
-        copyText += `价格: ${price.toFixed(2)}\n`;
+        copyText += `价格: ${formatPrice(price)}\n`;
         copyText += `涨跌: ${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%\n`;
         
         if (weibi !== null && !isNaN(weibi)) {
