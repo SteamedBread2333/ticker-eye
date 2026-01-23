@@ -187,7 +187,7 @@ async function addTicker() {
     return;
   }
   
-  tickers.push(symbol);
+  tickers.unshift(symbol); // 添加到第一个位置
   await chrome.storage.sync.set({ tickers });
   
   input.value = '';

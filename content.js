@@ -52,9 +52,9 @@ async function init() {
     
     if (shouldShow) {
       createUI();
+      await loadPosition(); // 先加载保存的位置和大小
       await updateTickers();
       startRefresh();
-      loadPosition(); // 加载保存的位置
     }
   } catch (error) {
     // 静默处理所有错误
@@ -135,6 +135,28 @@ function createUI() {
     
     // 添加拖拽功能
     setupDrag(header);
+    
+    // 监听大小变化（使用防抖）
+    const resizeObserver = new ResizeObserver(() => {
+      debouncedSaveSize();
+    });
+    resizeObserver.observe(tickerContainer);
+    
+    // 也监听鼠标释放事件，确保调整大小结束时保存
+    let isResizing = false;
+    const handleMouseDown = () => {
+      isResizing = true;
+    };
+    const handleMouseUp = () => {
+      if (isResizing) {
+        isResizing = false;
+        setTimeout(() => {
+          saveSize();
+        }, 100);
+      }
+    };
+    tickerContainer.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
   }
 }
 
@@ -179,14 +201,17 @@ function setupDrag(header) {
   });
 }
 
-// 保存位置
+// 保存位置和大小
 function savePosition(x, y) {
   try {
-    if (!chrome.runtime?.id) {
+    if (!chrome.runtime?.id || !tickerContainer) {
       return;
     }
     
-    chrome.storage.local.set({ tickerPosition: { x, y } }, () => {
+    const width = tickerContainer.offsetWidth;
+    const height = tickerContainer.offsetHeight;
+    
+    chrome.storage.local.set({ tickerPosition: { x, y, width, height } }, () => {
       // 静默处理所有错误
     });
   } catch (error) {
@@ -194,10 +219,42 @@ function savePosition(x, y) {
   }
 }
 
-// 加载位置
+// 防抖保存大小
+let saveSizeTimeout = null;
+function debouncedSaveSize() {
+  if (saveSizeTimeout) {
+    clearTimeout(saveSizeTimeout);
+  }
+  saveSizeTimeout = setTimeout(() => {
+    saveSize();
+  }, 300);
+}
+
+// 保存大小（当调整大小时调用）
+function saveSize() {
+  try {
+    if (!chrome.runtime?.id || !tickerContainer) {
+      return;
+    }
+    
+    const rect = tickerContainer.getBoundingClientRect();
+    const x = rect.left;
+    const y = rect.top;
+    const width = tickerContainer.offsetWidth;
+    const height = tickerContainer.offsetHeight;
+    
+    chrome.storage.local.set({ tickerPosition: { x, y, width, height } }, () => {
+      // 静默处理所有错误
+    });
+  } catch (error) {
+    // 静默处理所有错误
+  }
+}
+
+// 加载位置和大小
 async function loadPosition() {
   try {
-    if (!chrome.runtime?.id) {
+    if (!chrome.runtime?.id || !tickerContainer) {
       return;
     }
     
@@ -208,8 +265,17 @@ async function loadPosition() {
     }
     
     if (result.tickerPosition && tickerContainer) {
-      tickerContainer.style.left = result.tickerPosition.x + 'px';
-      tickerContainer.style.top = result.tickerPosition.y + 'px';
+      const pos = result.tickerPosition;
+      if (pos.x !== undefined && pos.y !== undefined) {
+        tickerContainer.style.left = pos.x + 'px';
+        tickerContainer.style.top = pos.y + 'px';
+      }
+      if (pos.width !== undefined && pos.width >= 200) {
+        tickerContainer.style.width = pos.width + 'px';
+      }
+      if (pos.height !== undefined && pos.height >= 200) {
+        tickerContainer.style.height = pos.height + 'px';
+      }
     }
   } catch (error) {
     // 静默处理所有错误
