@@ -364,7 +364,7 @@ async function fetchPriceFromTencent(symbol) {
     }
     
     // 获取量比（字段49，索引49）
-    // VR范围：150-250健康，250-350偏热，350-450过热，450+极度危险
+    // 量比范围：150-250健康，250-350偏热，350-450过热，450+极度危险
     let liangbi = null;
     if (fields.length > 49) {
       try {

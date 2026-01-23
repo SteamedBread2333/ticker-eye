@@ -189,3 +189,85 @@ h2 {
   color: #999;
   font-size: 13px;
 }
+
+.guide-notice {
+  background: #fff3cd;
+  border-left: 4px solid #ffc107;
+  padding: 12px 15px;
+  margin-bottom: 15px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #856404;
+}
+
+.guide-notice p {
+  margin: 0;
+}
+
+.guide-notice strong {
+  color: #856404;
+  font-weight: 600;
+}
+
+.vr-guide-table {
+  overflow-x: auto;
+}
+
+.vr-guide-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+  margin-top: 8px;
+  min-width: 600px;
+}
+
+.vr-guide-table thead {
+  background: #f5f5f5;
+}
+
+.vr-guide-table th {
+  padding: 6px 4px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #ddd;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.vr-guide-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid #eee;
+  color: #666;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.vr-guide-table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.vr-guide-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.risk-extreme {
+  color: #f44336;
+  font-weight: 500;
+}
+
+.risk-high {
+  color: #ff9800;
+  font-weight: 500;
+}
+
+.risk-medium {
+  color: #ffc107;
+  font-weight: 500;
+}
+
+.risk-low {
+  color: #4CAF50;
+  font-weight: 500;
+}

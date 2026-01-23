@@ -563,7 +563,7 @@ async function updateTickers() {
       const stockName = data.stockName || '';
       const displayName = stockName ? `${stockName} (${symbol})` : symbol;
       
-      // 判断是否是指数（指数不显示VR和BR）
+      // 判断是否是指数（指数不显示量比和委比）
       // 1. 检查股票名称中是否包含"指数"、"指"（如"深证综指"、"上证指数"）
       // 2. 检查代码模式：字母代码（如HSI、NDX、SPX等）通常是指数
       // 3. 检查A股指数代码模式：399xxx（深证指数）、000xxx（上证指数，但000开头也有股票，需结合名称判断）
@@ -579,13 +579,14 @@ async function updateTickers() {
       if (!isIndex && weibi !== null && !isNaN(weibi)) {
         const weibiPositive = weibi >= 0;
         weibiHtml = `<span class="ticker-weibi ${weibiPositive ? 'positive' : 'negative'}" title="委比 (Bid Ratio)">
-          BR: ${weibiPositive ? '+' : ''}${weibi.toFixed(2)}%
+          委比: ${weibiPositive ? '+' : ''}${weibi.toFixed(2)}%
         </span>`;
       }
       
       let liangbiHtml = '';
       if (!isIndex && liangbi !== null && !isNaN(liangbi)) {
-        // 根据VR数值范围添加不同的颜色类（显示值已除以100）
+        // 根据量比数值范围添加不同的颜色类（显示值已除以100）
+        // 1.50以下：成交量偏低，市场较冷清（对应原始值150以下）
         // 1.50-2.50：健康的强势市场（绿色，对应原始值150-250）
         // 2.50-3.50：偏热，需要警惕（黄色，对应原始值250-350）
         // 3.50-4.50：过热，准备撤退（橙色，对应原始值350-450）
@@ -604,10 +605,13 @@ async function updateTickers() {
         } else if (liangbi >= 1.50) {
           liangbiClass += ' liangbi-healthy'; // 健康，绿色
           emoji = '✅'; // 健康
+        } else {
+          // 量比 < 1.50：成交量偏低，市场较冷清
+          emoji = '😴'; // 睡觉
         }
         
         liangbiHtml = `<span class="${liangbiClass}" title="量比 (Volume Ratio)">
-          VR: ${liangbi.toFixed(2)} ${emoji}
+          量比: ${liangbi.toFixed(2)} ${emoji}
         </span>`;
       }
       
