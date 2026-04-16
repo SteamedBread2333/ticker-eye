@@ -386,6 +386,102 @@
   color: #ef4444; /* 红色 - 450以上：极度危险，随时暴跌 */
 }
 
+/* 资金流向：2×2 网格，紧凑间距，金额单行不换行 */
+.ticker-content .ticker-fund-line {
+  margin-top: 3px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.ticker-content .ticker-fund-inner {
+  display: block;
+  font-size: 6px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.ticker-content .ticker-fund-inner.ticker-fund-muted {
+  color: #888;
+}
+
+.ticker-content .ticker-fund-wrap {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 4px 5px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.ticker-content .ticker-fund-hd {
+  flex: 0 0 auto;
+  color: #888;
+  font-size: 5px;
+  font-weight: 600;
+  padding-top: 1px;
+  letter-spacing: 0.04em;
+}
+
+.ticker-content .ticker-fund-stack {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: auto;
+  column-gap: 8px;
+  row-gap: 3px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ticker-content .ticker-fund-item {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.ticker-content .ticker-fund-lab {
+  flex: 0 0 auto;
+  font-size: 5px;
+  color: #999;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+.ticker-content .ticker-fund-val {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.ticker-content .ticker-fund-val.fund-up {
+  color: #f44336;
+}
+
+.ticker-content .ticker-fund-val.fund-down {
+  color: #4caf50;
+}
+
+.ticker-content .ticker-fund-val.fund-neutral {
+  color: #666;
+}
+
 .ticker-copy-item-btn {
   background: transparent;
   border: none;

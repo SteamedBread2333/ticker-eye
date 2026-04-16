@@ -7,6 +7,39 @@ let isMinimized = false;
 let minimizedPosition = null;
 let goldIcon = null;
 
+/** 东方财富资金接口退避期内不再发消息 */
+const fundFlowSkipUntil = new Map();
+/** 列表重绘时复用上一帧资金行 HTML */
+const fundFlowLastFundInnerHtml = new Map();
+
+function fundFlowKey(symbol) {
+  if (!symbol) {
+    return '';
+  }
+  let s = String(symbol).trim().toUpperCase();
+  if (s.endsWith('.SS')) {
+    s = s.replace(/\.SS$/i, '.SH');
+  }
+  if (s.includes('.')) {
+    return s;
+  }
+  if (/^\d{6}$/.test(s)) {
+    if (/^(600|601|603|688|689|510|511|512|513|515|516|517|518|519)/.test(s)) {
+      return `${s}.SH`;
+    }
+    if (/^(000|001|002|003|300|159)/.test(s)) {
+      return `${s}.SZ`;
+    }
+    return `${s}.SH`;
+  }
+  return s;
+}
+
+function isCnAshareForFund(symbol) {
+  const k = fundFlowKey(symbol);
+  return k.endsWith('.SH') || k.endsWith('.SZ');
+}
+
 // 格式化价格，完整显示不四舍五入
 function formatPrice(price) {
   if (price === null || price === undefined || isNaN(price)) {
@@ -662,6 +695,9 @@ async function updateTickers() {
         </div>`;
       }
       
+      const fundSnap = fundFlowLastFundInnerHtml.get(fundFlowKey(symbol));
+      const fundRowHtml = `<div class="ticker-fund-line" data-symbol="${symbol}"><span class="ticker-fund-inner ${fundSnap ? '' : 'ticker-fund-muted'}">${fundSnap || '资金 …'}</span></div>`;
+      
       // 根据涨跌添加背景色类
       const itemClass = `ticker-item ${isPositive ? 'ticker-item-positive' : 'ticker-item-negative'}`;
       
@@ -682,6 +718,7 @@ async function updateTickers() {
               </span>
             </div>
             ${ratioHtml}
+            ${fundRowHtml}
           </div>
           <button class="ticker-copy-item-btn" data-symbol="${symbol}" data-index="${index}" title="复制该股票所有信息">Ask AI</button>
         </div>
@@ -705,6 +742,8 @@ async function updateTickers() {
     
     // 添加复制按钮功能
     setupCopyButtons(contentDiv, results, tickers);
+    
+    loadTickerFundLines(contentDiv);
   } catch (error) {
     // 捕获并处理扩展上下文失效的错误
     const errorMsg = error.message || '';
@@ -805,6 +844,12 @@ function setupCopyButtons(contentDiv, results, tickers) {
         if (liangbi !== null && !isNaN(liangbi)) {
           copyText += `量比: ${liangbi.toFixed(2)}\n`;
         }
+        
+        const tickerRows = contentDiv.querySelectorAll('.ticker-item');
+        const fundInner = tickerRows[index]?.querySelector('.ticker-fund-inner');
+        if (fundInner && fundInner.textContent.trim()) {
+          copyText += `${fundInner.textContent.trim()}\n`;
+        }
       } else {
         // 获取失败的情况，只复制股票代码
         copyText = symbol;
@@ -845,6 +890,129 @@ function setupCopyButtons(contentDiv, results, tickers) {
       }
     });
   });
+}
+
+/** 元 → 展示：|x|≥1亿 用亿，否则用万 */
+function formatFundFlowAmount(yuan) {
+  if (yuan == null || isNaN(yuan)) {
+    return '--';
+  }
+  if (yuan === 0) {
+    return '0.00万';
+  }
+  const abs = Math.abs(yuan);
+  if (abs >= 1e8) {
+    const v = yuan / 1e8;
+    return (v > 0 ? '+' : '') + v.toFixed(2) + '亿';
+  }
+  const v = yuan / 1e4;
+  return (v > 0 ? '+' : '') + v.toFixed(2) + '万';
+}
+
+function fundFlowColorClass(yuan) {
+  if (yuan == null || isNaN(yuan) || yuan === 0) {
+    return 'fund-neutral';
+  }
+  return yuan > 0 ? 'fund-up' : 'fund-down';
+}
+
+function buildFundLineInnerHtml(flow) {
+  const te = flow.teSuper;
+  const la = flow.large;
+  const me = flow.medium;
+  const sm = flow.small;
+  const cTe = fundFlowColorClass(te);
+  const cLa = fundFlowColorClass(la);
+  const cMe = fundFlowColorClass(me);
+  const cSm = sm != null && !isNaN(sm) ? fundFlowColorClass(sm) : 'fund-neutral';
+  const item = (lab, val, cls) =>
+    `<span class="ticker-fund-item"><span class="ticker-fund-lab">${lab}</span><span class="ticker-fund-val ${cls}">${formatFundFlowAmount(val)}</span></span>`;
+  return (
+    `<span class="ticker-fund-wrap">` +
+    `<span class="ticker-fund-hd">资金</span>` +
+    `<div class="ticker-fund-stack" title="特大/大/中/小单净流入">` +
+    `${item('特大', te, cTe)}${item('大', la, cLa)}${item('中', me, cMe)}${item('小', sm, cSm)}` +
+    `</div></span>`
+  );
+}
+
+async function fetchFundFlowFromBackground(symbol) {
+  const key = fundFlowKey(symbol);
+  try {
+    if (!chrome.runtime?.id) {
+      return null;
+    }
+    const until = fundFlowSkipUntil.get(key);
+    if (until && Date.now() < until) {
+      return null;
+    }
+    const response = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'fetchFundFlow', symbol }, (res) => {
+        if (chrome.runtime.lastError) {
+          resolve(null);
+        } else {
+          resolve(res);
+        }
+      });
+    });
+    if (response && response.success && response.data) {
+      fundFlowSkipUntil.delete(key);
+      return response.data;
+    }
+    if (response?.retryNotBefore && response.retryNotBefore > Date.now()) {
+      fundFlowSkipUntil.set(key, response.retryNotBefore);
+    }
+  } catch (e) {
+    // 静默
+  }
+  return null;
+}
+
+async function loadTickerFundLines(contentDiv) {
+  const lines = contentDiv.querySelectorAll('.ticker-fund-line');
+  let idx = 0;
+  for (const row of lines) {
+    if (idx++ > 0) {
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    const symbol = row.getAttribute('data-symbol');
+    const inner = row.querySelector('.ticker-fund-inner');
+    if (!inner || !symbol) {
+      continue;
+    }
+    const flowKey = fundFlowKey(symbol);
+    const skipUntil = fundFlowSkipUntil.get(flowKey);
+    if (skipUntil && Date.now() < skipUntil) {
+      continue;
+    }
+    if (!isCnAshareForFund(symbol)) {
+      inner.className = 'ticker-fund-inner ticker-fund-muted';
+      inner.textContent = '资金：仅沪深A股';
+      fundFlowLastFundInnerHtml.set(flowKey, inner.innerHTML);
+      continue;
+    }
+    const flow = await fetchFundFlowFromBackground(symbol);
+    const ok =
+      flow &&
+      flow.teSuper != null &&
+      !isNaN(flow.teSuper) &&
+      flow.large != null &&
+      !isNaN(flow.large) &&
+      flow.medium != null &&
+      !isNaN(flow.medium);
+    const prevHtml = fundFlowLastFundInnerHtml.get(flowKey);
+    if (ok) {
+      inner.className = 'ticker-fund-inner';
+      inner.innerHTML = buildFundLineInnerHtml(flow);
+    } else if (prevHtml && prevHtml.includes('ticker-fund-stack') && prevHtml.includes('特大')) {
+      inner.className = 'ticker-fund-inner';
+      inner.innerHTML = prevHtml;
+    } else {
+      inner.className = 'ticker-fund-inner ticker-fund-muted';
+      inner.textContent = '资金：暂无（限流或接口无数据）';
+    }
+    fundFlowLastFundInnerHtml.set(flowKey, inner.innerHTML);
+  }
 }
 
 // 重新排序股票列表

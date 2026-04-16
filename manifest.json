@@ -10,7 +10,11 @@
   "host_permissions": [
     "http://qt.gtimg.cn/*",
     "http://hq.sinajs.cn/*",
-    "https://hq.sinajs.cn/*"
+    "https://hq.sinajs.cn/*",
+    "https://push2.eastmoney.com/*",
+    "https://82.push2.eastmoney.com/*",
+    "https://push2his.eastmoney.com/*",
+    "https://*.eastmoney.com/*"
   ],
   "action": {
     "default_popup": "popup.html",

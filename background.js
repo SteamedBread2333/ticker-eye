@@ -1,6 +1,10 @@
 // Background service worker
 // 可以在这里处理后台任务，如定期更新数据等
 
+const fundFlowCache = new Map();
+const fundFlowInflight = new Map();
+const fundFlowRetryAfter = new Map();
+
 chrome.runtime.onInstalled.addListener(() => {
   // 扩展已安装
 });
@@ -47,6 +51,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch(error => {
         sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  } else if (message.action === 'fetchFundFlow') {
+    const sym = message.symbol;
+    fetchFundFlowFromEastmoney(sym)
+      .then((data) => {
+        const key = normalizeSymbol(sym).toUpperCase();
+        if (data) {
+          sendResponse({ success: true, data });
+        } else {
+          const retry = fundFlowRetryAfter.get(key) || 0;
+          sendResponse({
+            success: false,
+            error: '无资金流向数据',
+            retryNotBefore: retry > Date.now() ? retry : undefined
+          });
+        }
+      })
+      .catch(() => {
+        sendResponse({ success: false, error: '获取失败' });
       });
     return true;
   }
@@ -525,5 +549,323 @@ function normalizeSymbol(symbol) {
     }
   }
   return symbol;
+}
+
+// ——— 东方财富个股资金流向（特大/大/中/小，元）———
+const EASTMONEY_UT = 'b2884a393a59ad64002292a3e90d46a5';
+const FUND_FLOW_CACHE_TTL_MS = 90 * 1000;
+const FUND_FLOW_STALE_MAX_MS = 30 * 60 * 1000;
+const FUND_FLOW_FAIL_BACKOFF_MS = 45 * 1000;
+
+let fundFlowPersistLoaded = false;
+let fundFlowPersistTimer = null;
+
+async function loadFundFlowPersistOnce() {
+  if (fundFlowPersistLoaded) {
+    return;
+  }
+  fundFlowPersistLoaded = true;
+  try {
+    const { fundFlowPersist } = await chrome.storage.session.get('fundFlowPersist');
+    if (!fundFlowPersist || typeof fundFlowPersist !== 'object') {
+      return;
+    }
+    const now = Date.now();
+    for (const [k, rec] of Object.entries(fundFlowPersist)) {
+      if (rec && rec.data != null && typeof rec.ts === 'number') {
+        fundFlowCache.set(k, { data: rec.data, ts: rec.ts });
+      }
+      if (rec && typeof rec.retryNotBefore === 'number' && rec.retryNotBefore > now) {
+        fundFlowRetryAfter.set(k, rec.retryNotBefore);
+      }
+    }
+  } catch (e) {
+    fundFlowPersistLoaded = false;
+  }
+}
+
+function schedulePersistFundFlowState() {
+  if (fundFlowPersistTimer) {
+    clearTimeout(fundFlowPersistTimer);
+  }
+  fundFlowPersistTimer = setTimeout(async () => {
+    fundFlowPersistTimer = null;
+    try {
+      const o = {};
+      const keys = new Set([...fundFlowCache.keys(), ...fundFlowRetryAfter.keys()]);
+      for (const k of keys) {
+        const c = fundFlowCache.get(k);
+        const r = fundFlowRetryAfter.get(k);
+        o[k] = {};
+        if (c) {
+          o[k].data = c.data;
+          o[k].ts = c.ts;
+        }
+        if (r) {
+          o[k].retryNotBefore = r;
+        }
+      }
+      await chrome.storage.session.set({ fundFlowPersist: o });
+    } catch (e) {
+      // 忽略
+    }
+  }, 80);
+}
+
+function eastmoneyJsonRcOk(json) {
+  if (!json || typeof json !== 'object') {
+    return false;
+  }
+  const rc = json.rc;
+  if (rc === undefined || rc === null) {
+    return true;
+  }
+  return Number(rc) === 0;
+}
+
+function normalizeEastmoneyKlines(raw) {
+  if (raw == null) {
+    return [];
+  }
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+async function fetchEastmoneyJsonWithRetry(urls, init) {
+  let lastErr = null;
+  for (const url of urls) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(url, {
+          ...init,
+          cache: 'no-store'
+        });
+        if (!response.ok) {
+          lastErr = new Error(`HTTP ${response.status}`);
+          continue;
+        }
+        const text = await response.text();
+        if (!text || !text.trim()) {
+          lastErr = new Error('empty body');
+          continue;
+        }
+        const json = JSON.parse(text);
+        if (!eastmoneyJsonRcOk(json)) {
+          lastErr = new Error(`rc=${json.rc}`);
+          continue;
+        }
+        return json;
+      } catch (e) {
+        lastErr = e;
+      }
+      await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+    }
+  }
+  if (lastErr) {
+    throw lastErr;
+  }
+  return null;
+}
+
+function toEastmoneySecid(symbol) {
+  const normalized = normalizeSymbol(symbol);
+  if (normalized.endsWith('.SH')) {
+    const code = normalized.replace(/\.SH$/i, '');
+    return `1.${code.padStart(6, '0')}`;
+  }
+  if (normalized.endsWith('.SZ')) {
+    const code = normalized.replace(/\.SZ$/i, '');
+    return `0.${code.padStart(6, '0')}`;
+  }
+  return null;
+}
+
+// 分时：时间,主力,小单,中单,大单,超大单 —— f52–f55 与网页一致，与东方财富「小→中→大→特大」列序一致（非 特大→小）
+function parseIntradayFflowKline(lastLine) {
+  if (!lastLine || typeof lastLine !== 'string') {
+    return null;
+  }
+  const parts = lastLine.split(',');
+  if (parts.length < 6) {
+    return null;
+  }
+  const small = parseFloat(parts[2]);
+  const medium = parseFloat(parts[3]);
+  const large = parseFloat(parts[4]);
+  const teSuper = parseFloat(parts[5]);
+  if (isNaN(teSuper) || isNaN(large) || isNaN(medium)) {
+    return null;
+  }
+  return {
+    teSuper,
+    large,
+    medium,
+    small: isNaN(small) ? null : small
+  };
+}
+
+// 日K：日期,主力,小单,中单,大单,超大单（与分时四档列序相同）
+function parseDayFflowKline(lastLine) {
+  if (!lastLine || typeof lastLine !== 'string') {
+    return null;
+  }
+  const parts = lastLine.split(',');
+  // parts[0] 日期，[1] 主力，[2] 小 [3] 中 [4] 大 [5] 超大
+  if (parts.length >= 6) {
+    const small = parseFloat(parts[2]);
+    const medium = parseFloat(parts[3]);
+    const large = parseFloat(parts[4]);
+    const teSuper = parseFloat(parts[5]);
+    if (isNaN(teSuper) || isNaN(large) || isNaN(medium)) {
+      return null;
+    }
+    return {
+      teSuper,
+      large,
+      medium,
+      small: isNaN(small) ? null : small
+    };
+  }
+  // 仅 5 段：日期+主力+小+中+大（无超大单）；用大单/中单/小单填入展示位，避免 hasCore 全空
+  if (parts.length === 5) {
+    const vSmall = parseFloat(parts[2]);
+    const vMid = parseFloat(parts[3]);
+    const vLarge = parseFloat(parts[4]);
+    if (isNaN(vLarge) || isNaN(vMid) || isNaN(vSmall)) {
+      return null;
+    }
+    return {
+      teSuper: vLarge,
+      large: vMid,
+      medium: vSmall,
+      small: null
+    };
+  }
+  return null;
+}
+
+async function fetchFundFlowFromEastmoneyUncached(symbol) {
+  try {
+    const secid = toEastmoneySecid(symbol);
+    if (!secid) {
+      return null;
+    }
+    const q =
+      `lmt=1&klt=1&secid=${encodeURIComponent(secid)}` +
+      '&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65' +
+      `&ut=${EASTMONEY_UT}`;
+    const intradayUrls = [
+      `https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?${q}`,
+      `https://82.push2.eastmoney.com/api/qt/stock/fflow/kline/get?${q}`
+    ];
+    // 必须含 f56（超大单），否则只有 5 列，无法与「日期+主力+四档」对齐解析
+    const dayFields2 = 'f51,f52,f53,f54,f55,f56';
+    const dayUrls = [
+      `https://push2.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=1&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`,
+      `https://82.push2.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=1&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`,
+      `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=1&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`
+    ];
+    const fetchInit = {
+      method: 'GET',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        Referer: 'https://quote.eastmoney.com/',
+        Origin: 'https://quote.eastmoney.com'
+      }
+    };
+
+    // 分时在非交易时段常无当日 K 线；随后用日 K 取上一交易日汇总（不依赖是否开盘）
+    let json = null;
+    try {
+      json = await fetchEastmoneyJsonWithRetry(intradayUrls, fetchInit);
+    } catch (e) {
+      json = null;
+    }
+    let klines = normalizeEastmoneyKlines(json?.data?.klines);
+    if (klines.length > 0) {
+      const parsed = parseIntradayFflowKline(klines[klines.length - 1]);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    try {
+      json = await fetchEastmoneyJsonWithRetry(dayUrls, fetchInit);
+    } catch (e) {
+      json = null;
+    }
+    klines = normalizeEastmoneyKlines(json?.data?.klines);
+    if (klines.length > 0) {
+      const parsed = parseDayFflowKline(klines[klines.length - 1]);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchFundFlowFromEastmoney(symbol) {
+  await loadFundFlowPersistOnce();
+  if (!toEastmoneySecid(symbol)) {
+    return null;
+  }
+  const key = normalizeSymbol(symbol).toUpperCase();
+  const now = Date.now();
+  const prevHit = fundFlowCache.get(key);
+  if (prevHit && now - prevHit.ts < FUND_FLOW_CACHE_TTL_MS) {
+    return prevHit.data;
+  }
+  const retryNotBefore = fundFlowRetryAfter.get(key) || 0;
+  if (now < retryNotBefore) {
+    if (prevHit?.data && now - prevHit.ts < FUND_FLOW_STALE_MAX_MS) {
+      fundFlowCache.set(key, { data: prevHit.data, ts: Date.now() });
+      schedulePersistFundFlowState();
+      return prevHit.data;
+    }
+    return null;
+  }
+  let inflight = fundFlowInflight.get(key);
+  if (inflight) {
+    return inflight;
+  }
+  inflight = (async () => {
+    try {
+      const data = await fetchFundFlowFromEastmoneyUncached(symbol);
+      if (data) {
+        fundFlowCache.set(key, { data, ts: Date.now() });
+        fundFlowRetryAfter.delete(key);
+        schedulePersistFundFlowState();
+        return data;
+      }
+      if (prevHit?.data && Date.now() - prevHit.ts < FUND_FLOW_STALE_MAX_MS) {
+        fundFlowCache.set(key, { data: prevHit.data, ts: Date.now() });
+        fundFlowRetryAfter.delete(key);
+        schedulePersistFundFlowState();
+        return prevHit.data;
+      }
+      fundFlowRetryAfter.set(key, Date.now() + FUND_FLOW_FAIL_BACKOFF_MS);
+      schedulePersistFundFlowState();
+      return null;
+    } finally {
+      fundFlowInflight.delete(key);
+    }
+  })();
+  fundFlowInflight.set(key, inflight);
+  return inflight;
 }
 
