@@ -552,10 +552,14 @@ function normalizeSymbol(symbol) {
 }
 
 // ——— 东方财富个股资金流向（特大/大/中/小，元）———
+// 分时勿用 lmt=1：接口常空包体 → 误走日K兜底，显示成「上一交易日」全日累计
+const FFLOW_INTRADAY_LMT = 480;
+const FFLOW_DAYKLINE_LMT = 15;
 const EASTMONEY_UT = 'b2884a393a59ad64002292a3e90d46a5';
-const FUND_FLOW_CACHE_TTL_MS = 90 * 1000;
+// 资金与行情分开节流：行情约 3s，资金过短易触发东方财富限流，过长则显得「不实时」
+const FUND_FLOW_CACHE_TTL_MS = 15 * 1000;
 const FUND_FLOW_STALE_MAX_MS = 30 * 60 * 1000;
-const FUND_FLOW_FAIL_BACKOFF_MS = 45 * 1000;
+const FUND_FLOW_FAIL_BACKOFF_MS = 30 * 1000;
 
 let fundFlowPersistLoaded = false;
 let fundFlowPersistTimer = null;
@@ -637,6 +641,59 @@ function normalizeEastmoneyKlines(raw) {
       .filter(Boolean);
   }
   return [];
+}
+
+function chinaTodayYmd() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
+  } catch (e) {
+    const d = new Date();
+    return (
+      d.getFullYear() +
+      '-' +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(d.getDate()).padStart(2, '0')
+    );
+  }
+}
+
+/** 分时：东方财富对 lmt=1 常返回空包体；应用足够 lmt。仅采用「上海当天」最后一根 K（避免沿用上一交易日尾盘）。 */
+function pickIntradayFflowLine(rawKlines) {
+  const lines = normalizeEastmoneyKlines(rawKlines);
+  if (lines.length === 0) {
+    return null;
+  }
+  const ymd = chinaTodayYmd();
+  const todays = lines.filter((line) => {
+    const head = line.split(',')[0]?.trim();
+    return head && head.startsWith(ymd);
+  });
+  if (todays.length === 0) {
+    return null;
+  }
+  return todays[todays.length - 1];
+}
+
+/** 日K：优先取日期等于「上海当天」的一行（盘中为当日累计），否则取最近一行 */
+function pickDayFflowLine(rawKlines) {
+  const lines = normalizeEastmoneyKlines(rawKlines);
+  if (lines.length === 0) {
+    return null;
+  }
+  const ymd = chinaTodayYmd();
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const dayPart = lines[i].split(',')[0]?.trim();
+    if (dayPart === ymd) {
+      return lines[i];
+    }
+  }
+  return lines[lines.length - 1];
 }
 
 async function fetchEastmoneyJsonWithRetry(urls, init) {
@@ -759,7 +816,7 @@ async function fetchFundFlowFromEastmoneyUncached(symbol) {
       return null;
     }
     const q =
-      `lmt=1&klt=1&secid=${encodeURIComponent(secid)}` +
+      `lmt=${FFLOW_INTRADAY_LMT}&klt=1&secid=${encodeURIComponent(secid)}` +
       '&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65' +
       `&ut=${EASTMONEY_UT}`;
     const intradayUrls = [
@@ -768,10 +825,11 @@ async function fetchFundFlowFromEastmoneyUncached(symbol) {
     ];
     // 必须含 f56（超大单），否则只有 5 列，无法与「日期+主力+四档」对齐解析
     const dayFields2 = 'f51,f52,f53,f54,f55,f56';
+    const dayQ = `lmt=${FFLOW_DAYKLINE_LMT}&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`;
     const dayUrls = [
-      `https://push2.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=1&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`,
-      `https://82.push2.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=1&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`,
-      `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?lmt=1&klt=101&secid=${encodeURIComponent(secid)}&fields1=f1,f2,f3,f7&fields2=${dayFields2}&ut=${EASTMONEY_UT}`
+      `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?${dayQ}`,
+      `https://push2.eastmoney.com/api/qt/stock/fflow/daykline/get?${dayQ}`,
+      `https://82.push2.eastmoney.com/api/qt/stock/fflow/daykline/get?${dayQ}`
     ];
     const fetchInit = {
       method: 'GET',
@@ -785,16 +843,16 @@ async function fetchFundFlowFromEastmoneyUncached(symbol) {
       }
     };
 
-    // 分时在非交易时段常无当日 K 线；随后用日 K 取上一交易日汇总（不依赖是否开盘）
+    // 分时在非交易时段常无当日 K 线；随后用日 K（优先「上海当天」一行，否则最近交易日）
     let json = null;
     try {
       json = await fetchEastmoneyJsonWithRetry(intradayUrls, fetchInit);
     } catch (e) {
       json = null;
     }
-    let klines = normalizeEastmoneyKlines(json?.data?.klines);
-    if (klines.length > 0) {
-      const parsed = parseIntradayFflowKline(klines[klines.length - 1]);
+    const intradayLine = pickIntradayFflowLine(json?.data?.klines);
+    if (intradayLine) {
+      const parsed = parseIntradayFflowKline(intradayLine);
       if (parsed) {
         return parsed;
       }
@@ -805,9 +863,9 @@ async function fetchFundFlowFromEastmoneyUncached(symbol) {
     } catch (e) {
       json = null;
     }
-    klines = normalizeEastmoneyKlines(json?.data?.klines);
-    if (klines.length > 0) {
-      const parsed = parseDayFflowKline(klines[klines.length - 1]);
+    const dayLine = pickDayFflowLine(json?.data?.klines);
+    if (dayLine) {
+      const parsed = parseDayFflowKline(dayLine);
       if (parsed) {
         return parsed;
       }
