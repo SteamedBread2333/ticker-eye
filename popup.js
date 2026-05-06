@@ -257,8 +257,8 @@ async function toggleEnabled() {
     // 更新popup中的全局enabled状态（用于显示开关状态）
     await chrome.storage.sync.set({ enabled });
     
-    // 通知content script
-    chrome.tabs.sendMessage(tabId, { action: 'toggleEnabled', enabled }, (response) => {
+    // 通知 content script（附带 tabId，避免其内 getCurrentTabId 偶发失败导致无法关闭浮窗）
+    chrome.tabs.sendMessage(tabId, { action: 'toggleEnabled', enabled, tabId }, (response) => {
       // 静默处理所有错误（content script可能不存在或页面不支持）
       if (chrome.runtime.lastError) {
         // 忽略所有错误，不输出警告

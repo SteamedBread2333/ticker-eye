@@ -11,6 +11,158 @@ let goldIcon = null;
 const fundFlowSkipUntil = new Map();
 /** 列表重绘时复用上一帧资金行 HTML */
 const fundFlowLastFundInnerHtml = new Map();
+/** 最近一次把资金 HTML 写入 DOM 的时间；列表重建时不用过旧的快照撑场面，减轻「一时大一时小」的观感 */
+const fundFlowDomPaintTs = new Map();
+
+/** 资金异步填充世代：避免定时刷新多次 load 乱序写回导致数字来回跳 */
+let tickerFundRenderGeneration = 0;
+
+/** 供复制/逻辑读取最近一次拉取的行情（避免仅 patch DOM 时闭包仍是旧 results） */
+let lastTickerResults = [];
+
+let lastFundLineScheduleKey = '';
+let lastFundLineScheduleAt = 0;
+/** 资金行不随 3s 行情重绘；单独节流拉取，减少接口波动与颠覆已有资金 DOM */
+const FUND_PANEL_REFRESH_MS = 15000;
+
+function tickerRatioRowHtml(data, symbol) {
+  const stockName = data.stockName || '';
+  const weibi = data.weibi;
+  const liangbi = data.liangbi;
+  const isIndex =
+    stockName.includes('指数') ||
+    stockName.includes('Index') ||
+    stockName.includes('指') ||
+    /^[A-Z]{2,5}\.(HK|US)$/i.test(symbol) ||
+    /^(HSI|NDX|SPX|DJI|IXIC|RUT|VIX)/i.test(symbol) ||
+    /^399\d{3}\.(SZ|SH)$/i.test(symbol);
+
+  let weibiHtml = '';
+  if (!isIndex && weibi !== null && !isNaN(weibi)) {
+    const weibiPositive = weibi >= 0;
+    weibiHtml = `<span class="ticker-weibi ${weibiPositive ? 'positive' : 'negative'}" title="委比 (Bid Ratio)">
+          委比: ${weibiPositive ? '+' : ''}${weibi.toFixed(2)}%
+        </span>`;
+  }
+
+  let liangbiHtml = '';
+  if (!isIndex && liangbi !== null && !isNaN(liangbi)) {
+    let liangbiClass = 'ticker-liangbi';
+    let emoji = '';
+    if (liangbi >= 4.50) {
+      liangbiClass += ' liangbi-danger';
+      emoji = '🚨';
+    } else if (liangbi >= 3.50) {
+      liangbiClass += ' liangbi-overheat';
+      emoji = '🔥';
+    } else if (liangbi >= 2.50) {
+      liangbiClass += ' liangbi-warning';
+      emoji = '⚠️';
+    } else if (liangbi >= 1.50) {
+      liangbiClass += ' liangbi-healthy';
+      emoji = '✅';
+    } else {
+      emoji = '😴';
+    }
+    liangbiHtml = `<span class="${liangbiClass}" title="量比 (Volume Ratio)">
+          量比: ${liangbi.toFixed(2)} ${emoji}
+        </span>`;
+  }
+
+  if (!weibiHtml && !liangbiHtml) {
+    return '';
+  }
+  return `<div class="ticker-ratio-row" style="margin-top: 2px; display: flex; align-items: center; gap: 8px;">
+          ${weibiHtml}
+          ${liangbiHtml}
+        </div>`;
+}
+
+function canPatchTickerDom(contentDiv, tickers, results) {
+  if (!contentDiv || !results || results.some((r) => !r)) {
+    return false;
+  }
+  const items = contentDiv.querySelectorAll(':scope > .ticker-item');
+  if (items.length !== tickers.length) {
+    return false;
+  }
+  for (let i = 0; i < tickers.length; i++) {
+    const el = items[i];
+    if (el.getAttribute('data-symbol') !== tickers[i]) {
+      return false;
+    }
+    if (el.classList.contains('ticker-error')) {
+      return false;
+    }
+    if (!el.querySelector('.ticker-fund-line') || !el.querySelector('.ticker-main-row')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function patchTickerDom(contentDiv, tickers, results) {
+  const items = contentDiv.querySelectorAll(':scope > .ticker-item');
+  for (let i = 0; i < tickers.length; i++) {
+    const data = results[i];
+    const symbol = tickers[i];
+    const item = items[i];
+    const price = data.regularMarketPrice || 0;
+    const change = data.regularMarketChange || 0;
+    const changePercent = data.regularMarketChangePercent || 0;
+    const isPositive = change >= 0;
+    const stockName = data.stockName || '';
+    const displayName = stockName ? `${stockName} (${symbol})` : symbol;
+
+    item.className = `ticker-item ${isPositive ? 'ticker-item-positive' : 'ticker-item-negative'}`;
+
+    const nameEl = item.querySelector('.ticker-symbol-clickable');
+    if (nameEl) {
+      nameEl.textContent = displayName;
+      nameEl.setAttribute('title', `点击复制代码: ${symbol}`);
+    }
+
+    const mainRow = item.querySelector('.ticker-main-row');
+    if (mainRow) {
+      const priceEl = mainRow.querySelector('.ticker-price');
+      const changeEl = mainRow.querySelector('.ticker-change');
+      if (priceEl) {
+        priceEl.textContent = formatPrice(price);
+        priceEl.className = `ticker-price ${isPositive ? 'positive' : 'negative'}`;
+      }
+      if (changeEl) {
+        changeEl.textContent = `${isPositive ? '+' : ''}${changePercent.toFixed(2)}%`;
+        changeEl.className = `ticker-change ${isPositive ? 'positive' : 'negative'}`;
+      }
+    }
+
+    const ratioHtml = tickerRatioRowHtml(data, symbol);
+    const fundLine = item.querySelector('.ticker-fund-line');
+    let ratioEl = item.querySelector('.ticker-ratio-row');
+    if (ratioHtml) {
+      if (ratioEl) {
+        ratioEl.outerHTML = ratioHtml;
+      } else if (fundLine) {
+        fundLine.insertAdjacentHTML('beforebegin', ratioHtml);
+      } else if (mainRow) {
+        mainRow.insertAdjacentHTML('afterend', ratioHtml);
+      }
+    } else if (ratioEl) {
+      ratioEl.remove();
+    }
+  }
+}
+
+function scheduleFundLinesLoad(contentDiv, tickers, force) {
+  const key = tickers.join('\0');
+  const now = Date.now();
+  if (!force && key === lastFundLineScheduleKey && now - lastFundLineScheduleAt < FUND_PANEL_REFRESH_MS) {
+    return;
+  }
+  lastFundLineScheduleKey = key;
+  lastFundLineScheduleAt = now;
+  loadTickerFundLines(contentDiv, ++tickerFundRenderGeneration);
+}
 
 function fundFlowKey(symbol) {
   if (!symbol) {
@@ -599,10 +751,14 @@ async function updateTickers() {
     
     const promises = tickers.map(symbol => fetchTickerData(symbol));
     const results = await Promise.all(promises);
-    
-    // 保存当前顺序，用于拖拽时计算新位置
-    const currentTickers = [...tickers];
-    
+    lastTickerResults = results;
+
+    if (canPatchTickerDom(contentDiv, tickers, results)) {
+      patchTickerDom(contentDiv, tickers, results);
+      scheduleFundLinesLoad(contentDiv, tickers, false);
+      return;
+    }
+
     contentDiv.innerHTML = results
     .map((data, index) => {
       if (!data) {
@@ -621,86 +777,26 @@ async function updateTickers() {
           </div>
         `;
       }
-      
+
       const symbol = tickers[index];
       const price = data.regularMarketPrice || 0;
       const change = data.regularMarketChange || 0;
       const changePercent = data.regularMarketChangePercent || 0;
-      const weibi = data.weibi; // 委比（可能为null）
-      const liangbi = data.liangbi; // 量比（可能为null）
       const isPositive = change >= 0;
-      
-      // 显示股票名称，如果名称太长则只显示代码
+
       const stockName = data.stockName || '';
       const displayName = stockName ? `${stockName} (${symbol})` : symbol;
-      
-      // 判断是否是指数（指数不显示量比和委比）
-      // 1. 检查股票名称中是否包含"指数"、"指"（如"深证综指"、"上证指数"）
-      // 2. 检查代码模式：字母代码（如HSI、NDX、SPX等）通常是指数
-      // 3. 检查A股指数代码模式：399xxx（深证指数）、000xxx（上证指数，但000开头也有股票，需结合名称判断）
-      const isIndex = stockName.includes('指数') || 
-                      stockName.includes('Index') ||
-                      stockName.includes('指') || // 包含"指"字（如"深证综指"）
-                      /^[A-Z]{2,5}\.(HK|US)$/i.test(symbol) ||
-                      /^(HSI|NDX|SPX|DJI|IXIC|RUT|VIX)/i.test(symbol) ||
-                      /^399\d{3}\.(SZ|SH)$/i.test(symbol); // 399xxx是深证指数
-      
-      // 委比和量比显示逻辑（指数不显示）
-      let weibiHtml = '';
-      if (!isIndex && weibi !== null && !isNaN(weibi)) {
-        const weibiPositive = weibi >= 0;
-        weibiHtml = `<span class="ticker-weibi ${weibiPositive ? 'positive' : 'negative'}" title="委比 (Bid Ratio)">
-          委比: ${weibiPositive ? '+' : ''}${weibi.toFixed(2)}%
-        </span>`;
-      }
-      
-      let liangbiHtml = '';
-      if (!isIndex && liangbi !== null && !isNaN(liangbi)) {
-        // 根据量比数值范围添加不同的颜色类（显示值已除以100）
-        // 1.50以下：成交量偏低，市场较冷清（对应原始值150以下）
-        // 1.50-2.50：健康的强势市场（绿色，对应原始值150-250）
-        // 2.50-3.50：偏热，需要警惕（黄色，对应原始值250-350）
-        // 3.50-4.50：过热，准备撤退（橙色，对应原始值350-450）
-        // 4.50以上：极度危险，随时暴跌（红色，对应原始值450以上）
-        let liangbiClass = 'ticker-liangbi';
-        let emoji = '';
-        if (liangbi >= 4.50) {
-          liangbiClass += ' liangbi-danger'; // 极度危险，红色
-          emoji = '🚨'; // 极度危险
-        } else if (liangbi >= 3.50) {
-          liangbiClass += ' liangbi-overheat'; // 过热，橙色
-          emoji = '🔥'; // 过热
-        } else if (liangbi >= 2.50) {
-          liangbiClass += ' liangbi-warning'; // 偏热，黄色
-          emoji = '⚠️'; // 警告
-        } else if (liangbi >= 1.50) {
-          liangbiClass += ' liangbi-healthy'; // 健康，绿色
-          emoji = '✅'; // 健康
-        } else {
-          // 量比 < 1.50：成交量偏低，市场较冷清
-          emoji = '😴'; // 睡觉
-        }
-        
-        liangbiHtml = `<span class="${liangbiClass}" title="量比 (Volume Ratio)">
-          量比: ${liangbi.toFixed(2)} ${emoji}
-        </span>`;
-      }
-      
-      // 合并委比和量比显示
-      let ratioHtml = '';
-      if (weibiHtml || liangbiHtml) {
-        ratioHtml = `<div style="margin-top: 2px; display: flex; align-items: center; gap: 8px;">
-          ${weibiHtml}
-          ${liangbiHtml}
-        </div>`;
-      }
-      
-      const fundSnap = fundFlowLastFundInnerHtml.get(fundFlowKey(symbol));
+
+      const ratioHtml = tickerRatioRowHtml(data, symbol);
+
+      const fk = fundFlowKey(symbol);
+      const paintTs = fundFlowDomPaintTs.get(fk);
+      const fundSnap =
+        paintTs && Date.now() - paintTs < 120000 ? fundFlowLastFundInnerHtml.get(fk) : null;
       const fundRowHtml = `<div class="ticker-fund-line" data-symbol="${symbol}"><span class="ticker-fund-inner ${fundSnap ? '' : 'ticker-fund-muted'}">${fundSnap || '资金 …'}</span></div>`;
-      
-      // 根据涨跌添加背景色类
+
       const itemClass = `ticker-item ${isPositive ? 'ticker-item-positive' : 'ticker-item-negative'}`;
-      
+
       return `
         <div class="${itemClass}" data-symbol="${symbol}" data-index="${index}">
           <div class="ticker-order-controls">
@@ -709,7 +805,7 @@ async function updateTickers() {
           </div>
           <div style="flex: 1; min-width: 0;">
             <div class="ticker-symbol ticker-symbol-clickable" data-symbol="${symbol}" title="点击复制代码: ${symbol}">${displayName}</div>
-            <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;">
+            <div class="ticker-main-row" style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px;">
               <span class="ticker-price ${isPositive ? 'positive' : 'negative'}">
                 ${formatPrice(price)}
               </span>
@@ -740,10 +836,9 @@ async function updateTickers() {
     // 添加上下箭头排序功能
     setupOrderButtons(contentDiv, tickers);
     
-    // 添加复制按钮功能
-    setupCopyButtons(contentDiv, results, tickers);
-    
-    loadTickerFundLines(contentDiv);
+    setupCopyButtons(contentDiv);
+
+    scheduleFundLinesLoad(contentDiv, tickers, true);
   } catch (error) {
     // 捕获并处理扩展上下文失效的错误
     const errorMsg = error.message || '';
@@ -785,16 +880,17 @@ function setupOrderButtons(container, tickers) {
 
 
 
-// 设置复制按钮功能
-function setupCopyButtons(contentDiv, results, tickers) {
-  contentDiv.querySelectorAll('.ticker-copy-item-btn').forEach(btn => {
+// 设置复制按钮功能（读取 lastTickerResults，以便 patch DOM 后仍复制到最新行情）
+function setupCopyButtons(contentDiv) {
+  contentDiv.querySelectorAll('.ticker-copy-item-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const index = parseInt(btn.getAttribute('data-index'));
       const symbol = btn.getAttribute('data-symbol');
-      
+      const results = lastTickerResults;
+
       let copyText = '';
-      
+
       // 检查是否有数据（获取失败的情况）
       if (index >= 0 && index < results.length && results[index]) {
         const data = results[index];
@@ -927,11 +1023,13 @@ function buildFundLineInnerHtml(flow) {
   const cSm = sm != null && !isNaN(sm) ? fundFlowColorClass(sm) : 'fund-neutral';
   const item = (lab, val, cls) =>
     `<span class="ticker-fund-item"><span class="ticker-fund-lab">${lab}</span><span class="ticker-fund-val ${cls}">${formatFundFlowAmount(val)}</span></span>`;
+  const tip =
+    '与东方财富「资金流向」一致：净超大/大单/中单/小单累计净流入（当日分时最后一根K）。';
   return (
     `<span class="ticker-fund-wrap">` +
     `<span class="ticker-fund-hd">资金</span>` +
-    `<div class="ticker-fund-stack" title="特大/大/中/小单净流入">` +
-    `${item('特大', te, cTe)}${item('大', la, cLa)}${item('中', me, cMe)}${item('小', sm, cSm)}` +
+    `<div class="ticker-fund-stack" title="${tip}">` +
+    `${item('超大', te, cTe)}${item('大单', la, cLa)}${item('中单', me, cMe)}${item('小单', sm, cSm)}` +
     `</div></span>`
   );
 }
@@ -968,12 +1066,18 @@ async function fetchFundFlowFromBackground(symbol) {
   return null;
 }
 
-async function loadTickerFundLines(contentDiv) {
+async function loadTickerFundLines(contentDiv, renderGen) {
   const lines = contentDiv.querySelectorAll('.ticker-fund-line');
   let idx = 0;
   for (const row of lines) {
+    if (renderGen !== tickerFundRenderGeneration) {
+      return;
+    }
     if (idx++ > 0) {
       await new Promise((r) => setTimeout(r, 120));
+    }
+    if (renderGen !== tickerFundRenderGeneration) {
+      return;
     }
     const symbol = row.getAttribute('data-symbol');
     const inner = row.querySelector('.ticker-fund-inner');
@@ -989,13 +1093,15 @@ async function loadTickerFundLines(contentDiv) {
       inner.className = 'ticker-fund-inner ticker-fund-muted';
       inner.textContent = '资金：仅沪深A股';
       fundFlowLastFundInnerHtml.set(flowKey, inner.innerHTML);
+      fundFlowDomPaintTs.set(flowKey, Date.now());
       continue;
     }
     const flow = await fetchFundFlowFromBackground(symbol);
+    if (renderGen !== tickerFundRenderGeneration) {
+      return;
+    }
     const ok =
       flow &&
-      flow.teSuper != null &&
-      !isNaN(flow.teSuper) &&
       flow.large != null &&
       !isNaN(flow.large) &&
       flow.medium != null &&
@@ -1004,7 +1110,11 @@ async function loadTickerFundLines(contentDiv) {
     if (ok) {
       inner.className = 'ticker-fund-inner';
       inner.innerHTML = buildFundLineInnerHtml(flow);
-    } else if (prevHtml && prevHtml.includes('ticker-fund-stack') && prevHtml.includes('特大')) {
+    } else if (
+      prevHtml &&
+      prevHtml.includes('ticker-fund-stack') &&
+      (prevHtml.includes('超大') || prevHtml.includes('特大'))
+    ) {
       inner.className = 'ticker-fund-inner';
       inner.innerHTML = prevHtml;
     } else {
@@ -1012,6 +1122,7 @@ async function loadTickerFundLines(contentDiv) {
       inner.textContent = '资金：暂无（限流或接口无数据）';
     }
     fundFlowLastFundInnerHtml.set(flowKey, inner.innerHTML);
+    fundFlowDomPaintTs.set(flowKey, Date.now());
   }
 }
 
@@ -1283,13 +1394,20 @@ function stopRefresh() {
   }
 }
 
-// 移除UI
+// 移除UI（含金元宝最小化入口，避免关闭「在页面显示行情」后仍残留）
 function removeUI() {
+  stopRefresh();
+  if (goldIcon && goldIcon.parentNode) {
+    goldIcon.parentNode.removeChild(goldIcon);
+  }
+  goldIcon = null;
+  isMinimized = false;
+  minimizedPosition = null;
+  saveMinimizedState(false, null, null);
   if (tickerContainer) {
     tickerContainer.remove();
     tickerContainer = null;
   }
-  stopRefresh();
 }
 
 // 监听消息
@@ -1297,57 +1415,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'updateTickers') {
     updateTickers();
   } else if (message.action === 'toggleEnabled') {
-    // 获取当前标签页ID
-    getCurrentTabId().then(tabId => {
-      if (!tabId) return;
-      
-      try {
-        if (!chrome.runtime?.id) {
-          return;
-        }
-        
-        // 更新启用标签页列表
+    const tabFromMessage = message.tabId;
+    const resolveTabId = () =>
+      tabFromMessage != null ? Promise.resolve(tabFromMessage) : getCurrentTabId();
+
+    if (!message.enabled) {
+      removeUI();
+      resolveTabId().then((tid) => {
+        if (tid == null || !chrome.runtime?.id) return;
         chrome.storage.local.get(['enabledTabs'], (result) => {
-          if (chrome.runtime.lastError) {
-            // 静默处理所有错误
-            return;
-          }
-          
-          const enabledTabs = result.enabledTabs || [];
-          
-          if (message.enabled) {
-            // 添加到启用列表
-            if (!enabledTabs.includes(tabId)) {
-              enabledTabs.push(tabId);
-              try {
-                chrome.storage.local.set({ enabledTabs }, () => {
-                  // 静默处理所有错误
-                });
-              } catch (e) {
-                // 静默处理所有错误
-              }
-            }
-            createUI();
-            updateTickers().catch(() => {
-              // 静默处理所有错误
-            });
-            startRefresh();
-            loadPosition();
-          } else {
-            // 从启用列表移除
-            const filtered = enabledTabs.filter(id => id !== tabId);
-            try {
-              chrome.storage.local.set({ enabledTabs: filtered }, () => {
-                // 静默处理所有错误
-              });
-            } catch (e) {
-              // 静默处理所有错误
-            }
-            removeUI();
+          if (chrome.runtime.lastError) return;
+          const enabledTabs = (result.enabledTabs || []).filter((id) => id !== tid);
+          try {
+            chrome.storage.local.set({ enabledTabs }, () => {});
+          } catch (e) {
+            // 静默
           }
         });
+      });
+      return;
+    }
+
+    resolveTabId().then((tabId) => {
+      if (!tabId || !chrome.runtime?.id) return;
+      try {
+        chrome.storage.local.get(['enabledTabs'], (result) => {
+          if (chrome.runtime.lastError) return;
+          const enabledTabs = result.enabledTabs || [];
+          if (!enabledTabs.includes(tabId)) {
+            enabledTabs.push(tabId);
+          }
+          try {
+            chrome.storage.local.set({ enabledTabs }, () => {});
+          } catch (e) {
+            // 静默
+          }
+          createUI();
+          updateTickers().catch(() => {});
+          startRefresh();
+          loadPosition();
+        });
       } catch (error) {
-        // 静默处理所有错误
+        // 静默
       }
     });
   }

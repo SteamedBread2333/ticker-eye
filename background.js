@@ -557,8 +557,9 @@ const FFLOW_INTRADAY_LMT = 480;
 const FFLOW_DAYKLINE_LMT = 15;
 const EASTMONEY_UT = 'b2884a393a59ad64002292a3e90d46a5';
 // 资金与行情分开节流：行情约 3s，资金过短易触发东方财富限流，过长则显得「不实时」
-const FUND_FLOW_CACHE_TTL_MS = 15 * 1000;
-const FUND_FLOW_STALE_MAX_MS = 30 * 60 * 1000;
+// 仅当「本次真实拉取成功」时刷新 dataTs；失败/限流回退旧数据时不得改写 dataTs，否则旧快照会被当成刚更新并长期占满 TTL（表现为资金数字来回跳）
+const FUND_FLOW_CACHE_TTL_MS = 8 * 1000;
+const FUND_FLOW_STALE_MAX_MS = 90 * 1000;
 const FUND_FLOW_FAIL_BACKOFF_MS = 30 * 1000;
 
 let fundFlowPersistLoaded = false;
@@ -576,8 +577,9 @@ async function loadFundFlowPersistOnce() {
     }
     const now = Date.now();
     for (const [k, rec] of Object.entries(fundFlowPersist)) {
-      if (rec && rec.data != null && typeof rec.ts === 'number') {
-        fundFlowCache.set(k, { data: rec.data, ts: rec.ts });
+      if (rec && rec.data != null) {
+        const dataTs = typeof rec.dataTs === 'number' ? rec.dataTs : typeof rec.ts === 'number' ? rec.ts : 0;
+        fundFlowCache.set(k, { data: rec.data, dataTs });
       }
       if (rec && typeof rec.retryNotBefore === 'number' && rec.retryNotBefore > now) {
         fundFlowRetryAfter.set(k, rec.retryNotBefore);
@@ -603,7 +605,7 @@ function schedulePersistFundFlowState() {
         o[k] = {};
         if (c) {
           o[k].data = c.data;
-          o[k].ts = c.ts;
+          o[k].dataTs = c.dataTs != null ? c.dataTs : c.ts != null ? c.ts : 0;
         }
         if (r) {
           o[k].retryNotBefore = r;
@@ -680,7 +682,7 @@ function pickIntradayFflowLine(rawKlines) {
   return todays[todays.length - 1];
 }
 
-/** 日K：优先取日期等于「上海当天」的一行（盘中为当日累计），否则取最近一行 */
+/** 日K：仅使用日期等于「上海当天」的一行。若无当日行则返回 null，避免误用上一交易日全日累计与盘中分时混用导致数量级跳变。 */
 function pickDayFflowLine(rawKlines) {
   const lines = normalizeEastmoneyKlines(rawKlines);
   if (lines.length === 0) {
@@ -693,7 +695,7 @@ function pickDayFflowLine(rawKlines) {
       return lines[i];
     }
   }
-  return lines[lines.length - 1];
+  return null;
 }
 
 async function fetchEastmoneyJsonWithRetry(urls, init) {
@@ -745,7 +747,7 @@ function toEastmoneySecid(symbol) {
   return null;
 }
 
-// 分时：时间,主力,小单,中单,大单,超大单 —— f52–f55 与网页一致，与东方财富「小→中→大→特大」列序一致（非 特大→小）
+// 分时：时间,主力净流入,小单,中单,大单,超大单（与同花顺/efinance 对东财接口约定一致；主力=超大+大单）
 function parseIntradayFflowKline(lastLine) {
   if (!lastLine || typeof lastLine !== 'string') {
     return null;
@@ -754,14 +756,16 @@ function parseIntradayFflowKline(lastLine) {
   if (parts.length < 6) {
     return null;
   }
+  const mainNet = parseFloat(parts[1]);
   const small = parseFloat(parts[2]);
   const medium = parseFloat(parts[3]);
   const large = parseFloat(parts[4]);
   const teSuper = parseFloat(parts[5]);
-  if (isNaN(teSuper) || isNaN(large) || isNaN(medium)) {
+  if (isNaN(mainNet) || isNaN(teSuper) || isNaN(large) || isNaN(medium)) {
     return null;
   }
   return {
+    mainNet,
     teSuper,
     large,
     medium,
@@ -769,7 +773,7 @@ function parseIntradayFflowKline(lastLine) {
   };
 }
 
-// 日K：日期,主力,小单,中单,大单,超大单（与分时四档列序相同）
+// 日K：日期,主力净流入,小单,中单,大单,超大单（与分时列序相同）
 function parseDayFflowKline(lastLine) {
   if (!lastLine || typeof lastLine !== 'string') {
     return null;
@@ -777,33 +781,37 @@ function parseDayFflowKline(lastLine) {
   const parts = lastLine.split(',');
   // parts[0] 日期，[1] 主力，[2] 小 [3] 中 [4] 大 [5] 超大
   if (parts.length >= 6) {
+    const mainNet = parseFloat(parts[1]);
     const small = parseFloat(parts[2]);
     const medium = parseFloat(parts[3]);
     const large = parseFloat(parts[4]);
     const teSuper = parseFloat(parts[5]);
-    if (isNaN(teSuper) || isNaN(large) || isNaN(medium)) {
+    if (isNaN(mainNet) || isNaN(teSuper) || isNaN(large) || isNaN(medium)) {
       return null;
     }
     return {
+      mainNet,
       teSuper,
       large,
       medium,
       small: isNaN(small) ? null : small
     };
   }
-  // 仅 5 段：日期+主力+小+中+大（无超大单）；用大单/中单/小单填入展示位，避免 hasCore 全空
+  // 仅 5 段：日期+主力+小+中+大（无超大单）；勿把「大单」误标为「特大」，否则与网页不符
   if (parts.length === 5) {
+    const mainNet = parseFloat(parts[1]);
     const vSmall = parseFloat(parts[2]);
     const vMid = parseFloat(parts[3]);
     const vLarge = parseFloat(parts[4]);
-    if (isNaN(vLarge) || isNaN(vMid) || isNaN(vSmall)) {
+    if (isNaN(mainNet) || isNaN(vLarge) || isNaN(vMid) || isNaN(vSmall)) {
       return null;
     }
     return {
-      teSuper: vLarge,
-      large: vMid,
-      medium: vSmall,
-      small: null
+      mainNet,
+      teSuper: null,
+      large: vLarge,
+      medium: vMid,
+      small: vSmall
     };
   }
   return null;
@@ -843,7 +851,7 @@ async function fetchFundFlowFromEastmoneyUncached(symbol) {
       }
     };
 
-    // 分时在非交易时段常无当日 K 线；随后用日 K（优先「上海当天」一行，否则最近交易日）
+    // 分时在非交易时段常无当日 K 线；再用日 K 仅接受「当日」一行（无则放弃，不用昨日兜底）
     let json = null;
     try {
       json = await fetchEastmoneyJsonWithRetry(intradayUrls, fetchInit);
@@ -885,14 +893,12 @@ async function fetchFundFlowFromEastmoney(symbol) {
   const key = normalizeSymbol(symbol).toUpperCase();
   const now = Date.now();
   const prevHit = fundFlowCache.get(key);
-  if (prevHit && now - prevHit.ts < FUND_FLOW_CACHE_TTL_MS) {
+  if (prevHit && now - prevHit.dataTs < FUND_FLOW_CACHE_TTL_MS) {
     return prevHit.data;
   }
   const retryNotBefore = fundFlowRetryAfter.get(key) || 0;
   if (now < retryNotBefore) {
-    if (prevHit?.data && now - prevHit.ts < FUND_FLOW_STALE_MAX_MS) {
-      fundFlowCache.set(key, { data: prevHit.data, ts: Date.now() });
-      schedulePersistFundFlowState();
+    if (prevHit?.data != null && now - prevHit.dataTs < FUND_FLOW_STALE_MAX_MS) {
       return prevHit.data;
     }
     return null;
@@ -905,15 +911,12 @@ async function fetchFundFlowFromEastmoney(symbol) {
     try {
       const data = await fetchFundFlowFromEastmoneyUncached(symbol);
       if (data) {
-        fundFlowCache.set(key, { data, ts: Date.now() });
+        fundFlowCache.set(key, { data, dataTs: Date.now() });
         fundFlowRetryAfter.delete(key);
         schedulePersistFundFlowState();
         return data;
       }
-      if (prevHit?.data && Date.now() - prevHit.ts < FUND_FLOW_STALE_MAX_MS) {
-        fundFlowCache.set(key, { data: prevHit.data, ts: Date.now() });
-        fundFlowRetryAfter.delete(key);
-        schedulePersistFundFlowState();
+      if (prevHit?.data != null && Date.now() - prevHit.dataTs < FUND_FLOW_STALE_MAX_MS) {
         return prevHit.data;
       }
       fundFlowRetryAfter.set(key, Date.now() + FUND_FLOW_FAIL_BACKOFF_MS);
